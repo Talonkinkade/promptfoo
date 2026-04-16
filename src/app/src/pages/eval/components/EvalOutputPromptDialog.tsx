@@ -1,156 +1,141 @@
-import { useState, useEffect } from 'react';
-import CheckIcon from '@mui/icons-material/Check';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
-import Dialog from '@mui/material/Dialog';
-import DialogActions from '@mui/material/DialogActions';
-import DialogContent from '@mui/material/DialogContent';
-import DialogTitle from '@mui/material/DialogTitle';
-import IconButton from '@mui/material/IconButton';
-import Link from '@mui/material/Link';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import TextareaAutosize from '@mui/material/TextareaAutosize';
-import Typography from '@mui/material/Typography';
-import { ellipsize } from '../../../../../util/text';
+import { useEffect, useState } from 'react';
+
+import { Button } from '@app/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@app/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@app/components/ui/tabs';
+import { HIDDEN_METADATA_KEYS } from '@app/constants';
+import { Check, Copy, X } from 'lucide-react';
 import ChatMessages, { type Message } from './ChatMessages';
-import type { GradingResult } from './types';
+import { DebuggingPanel } from './DebuggingPanel';
+import { EvaluationPanel } from './EvaluationPanel';
+import { type ExpandedMetadataState, MetadataPanel } from './MetadataPanel';
+import { OutputsPanel } from './OutputsPanel';
+import { PromptEditor } from './PromptEditor';
+import type { GradingResult, Vars } from '@promptfoo/types';
 
-// Common style object for copy buttons
-const copyButtonSx = {
-  position: 'absolute',
-  right: '8px',
-  top: '4px',
-  bgcolor: 'rgba(255, 255, 255, 0.7)',
-};
+import type { Trace } from '../../../components/traces/TraceView';
+import type { CloudConfigData } from '../../../hooks/useCloudConfig';
+import type { Citation } from './Citations';
+import type { ResultsFilterOperator, ResultsFilterType } from './store';
 
-function AssertionResults({ gradingResults }: { gradingResults?: GradingResult[] }) {
-  const [expandedValues, setExpandedValues] = useState<{ [key: number]: boolean }>({});
-  const [copiedAssertions, setCopiedAssertions] = useState<{ [key: string]: boolean }>({});
-  const [hoveredAssertion, setHoveredAssertion] = useState<string | null>(null);
+const subtitleTypographyClassName = 'mb-2 font-medium text-base';
 
-  if (!gradingResults) {
-    return null;
-  }
+interface RedteamHistoryEntry {
+  prompt?: string;
+  promptAudio?: { data?: string; format?: string };
+  promptImage?: { data?: string; format?: string };
+  output?: string;
+  outputAudio?: { data?: string; format?: string };
+  outputImage?: { data?: string; format?: string };
+}
 
-  const hasMetrics = gradingResults.some((result) => result?.assertion?.metric);
+interface CodeDisplayProps {
+  content: string;
+  title: string;
+  maxHeight?: string | number;
+  onCopy: () => void;
+  copied: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  showCopyButton?: boolean;
+}
 
-  const toggleExpand = (index: number) => {
-    setExpandedValues((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
+function CodeDisplay({
+  content,
+  title,
+  maxHeight = 400,
+  onCopy,
+  copied,
+  onMouseEnter,
+  onMouseLeave,
+  showCopyButton = false,
+}: CodeDisplayProps) {
+  // Ensure content is a string - handles cases where providers return objects
+  const safeContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
 
-  const copyAssertionToClipboard = async (key: string, text: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    await navigator.clipboard.writeText(text);
-    setCopiedAssertions((prev) => ({ ...prev, [key]: true }));
-
-    setTimeout(() => {
-      setCopiedAssertions((prev) => ({ ...prev, [key]: false }));
-    }, 2000);
-  };
+  // Improved code detection logic
+  const isCode =
+    /^[\s]*[{[]/.test(safeContent) || // JSON-like (starts with { or [)
+    /^#\s/.test(safeContent) || // Markdown headers (starts with # )
+    /```/.test(safeContent) || // Code blocks (contains ```)
+    /^\s*[\w-]+\s*:/.test(safeContent) || // YAML/config-like (key: value)
+    /^\s*<\w+/.test(safeContent) || // XML/HTML-like (starts with <tag)
+    safeContent.includes('function ') || // JavaScript functions
+    safeContent.includes('class ') || // Class definitions
+    safeContent.includes('import ') || // Import statements
+    /^\s*def\s+/.test(safeContent) || // Python functions
+    /^\s*\w+\s*\(/.test(safeContent); // Function calls
 
   return (
-    <Box mt={2}>
-      <Typography variant="subtitle1">Assertions</Typography>
-      <TableContainer>
-        <Table>
-          <TableHead>
-            <TableRow>
-              {hasMetrics && <TableCell style={{ fontWeight: 'bold' }}>Metric</TableCell>}
-              <TableCell style={{ fontWeight: 'bold' }}>Pass</TableCell>
-              <TableCell style={{ fontWeight: 'bold' }}>Score</TableCell>
-              <TableCell style={{ fontWeight: 'bold' }}>Type</TableCell>
-              <TableCell style={{ fontWeight: 'bold' }}>Value</TableCell>
-              <TableCell style={{ fontWeight: 'bold' }}>Reason</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {gradingResults.map((result, i) => {
-              if (!result) {
-                return null;
-              }
-              const value = result.assertion?.value
-                ? typeof result.assertion.value === 'object'
-                  ? JSON.stringify(result.assertion.value, null, 2)
-                  : String(result.assertion.value)
-                : '-';
-              const truncatedValue = ellipsize(value, 300);
-              const isExpanded = expandedValues[i] || false;
-              const valueKey = `value-${i}`;
-
-              return (
-                <TableRow key={i}>
-                  {hasMetrics && <TableCell>{result.assertion?.metric || ''}</TableCell>}
-                  <TableCell>{result.pass ? '✅' : '❌'}</TableCell>
-                  <TableCell>{result.score?.toFixed(2)}</TableCell>
-                  <TableCell>{result.assertion?.type || ''}</TableCell>
-                  <TableCell
-                    style={{ whiteSpace: 'pre-wrap', cursor: 'pointer', position: 'relative' }}
-                    onClick={() => toggleExpand(i)}
-                    onMouseEnter={() => setHoveredAssertion(valueKey)}
-                    onMouseLeave={() => setHoveredAssertion(null)}
-                  >
-                    {isExpanded ? value : truncatedValue}
-                    {(hoveredAssertion === valueKey || copiedAssertions[valueKey]) && (
-                      <IconButton
-                        size="small"
-                        onClick={(e) => copyAssertionToClipboard(valueKey, value, e)}
-                        sx={copyButtonSx}
-                        aria-label={`Copy assertion value ${i}`}
-                      >
-                        {copiedAssertions[valueKey] ? (
-                          <CheckIcon fontSize="small" />
-                        ) : (
-                          <ContentCopyIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    )}
-                  </TableCell>
-                  <TableCell
-                    style={{ whiteSpace: 'pre-wrap', position: 'relative' }}
-                    onMouseEnter={() => setHoveredAssertion(`reason-${i}`)}
-                    onMouseLeave={() => setHoveredAssertion(null)}
-                  >
-                    {result.reason}
-                    {result.reason &&
-                      (hoveredAssertion === `reason-${i}` || copiedAssertions[`reason-${i}`]) && (
-                        <IconButton
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyAssertionToClipboard(`reason-${i}`, result.reason || '', e);
-                          }}
-                          sx={copyButtonSx}
-                          aria-label={`Copy assertion reason ${i}`}
-                        >
-                          {copiedAssertions[`reason-${i}`] ? (
-                            <CheckIcon fontSize="small" />
-                          ) : (
-                            <ContentCopyIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
+    <div className="mb-4">
+      <h4 className={subtitleTypographyClassName}>{title}</h4>
+      <div
+        className="relative rounded-lg border border-border bg-muted/30 overflow-hidden transition-colors hover:border-primary/50 hover:bg-muted/50"
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <div
+          className="p-4 overflow-x-auto overflow-y-auto"
+          style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
+        >
+          {isCode ? (
+            <pre className="m-0 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words">
+              {safeContent}
+            </pre>
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words m-0">
+              {safeContent}
+            </p>
+          )}
+        </div>
+        {showCopyButton && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onCopy}
+            className="absolute right-2 top-2 size-8 bg-background shadow-sm hover:shadow"
+            aria-label={`Copy ${title.toLowerCase()}`}
+          >
+            {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
-interface ExpandedMetadataState {
-  [key: string]: {
-    expanded: boolean;
-    lastClickTime: number;
-  };
+/**
+ * Parameters for replaying an evaluation with a modified prompt.
+ */
+export interface ReplayEvaluationParams {
+  evaluationId: string;
+  testIndex?: number;
+  prompt: string;
+  variables?: Vars;
+}
+
+/**
+ * Result from replaying an evaluation.
+ */
+export interface ReplayEvaluationResult {
+  output?: string;
+  error?: string;
+}
+
+/**
+ * Filter configuration for table filtering.
+ */
+export interface FilterConfig {
+  type: ResultsFilterType;
+  operator: ResultsFilterOperator;
+  value: string;
+  field?: string;
 }
 
 interface EvalOutputPromptDialogProps {
@@ -160,18 +145,24 @@ interface EvalOutputPromptDialogProps {
   provider?: string;
   output?: string;
   gradingResults?: GradingResult[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+  /**
+   * The actual prompt sent by the provider (if different from the rendered prompt).
+   * Takes priority over metadata.redteamFinalPrompt for display purposes.
+   */
+  providerPrompt?: string;
+  evaluationId?: string;
+  testCaseId?: string;
+  testIndex?: number;
+  promptIndex?: number;
+  variables?: Vars;
+  onAddFilter?: (filter: FilterConfig) => void;
+  onResetFilters?: () => void;
+  onReplay?: (params: ReplayEvaluationParams) => Promise<ReplayEvaluationResult>;
+  fetchTraces?: (evaluationId: string, signal: AbortSignal) => Promise<Trace[]>;
+  cloudConfig?: CloudConfigData | null;
+  readOnly?: boolean;
 }
-
-// URL detection function
-const isValidUrl = (str: string): boolean => {
-  try {
-    new URL(str);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 export default function EvalOutputPromptDialog({
   open,
@@ -181,16 +172,71 @@ export default function EvalOutputPromptDialog({
   output,
   gradingResults,
   metadata,
+  providerPrompt,
+  evaluationId,
+  testCaseId,
+  testIndex,
+  promptIndex,
+  variables,
+  onAddFilter,
+  onResetFilters,
+  onReplay,
+  fetchTraces,
+  cloudConfig,
+  readOnly = false,
 }: EvalOutputPromptDialogProps) {
+  const [activeTab, setActiveTab] = useState('prompt-output');
   const [copied, setCopied] = useState(false);
   const [copiedFields, setCopiedFields] = useState<{ [key: string]: boolean }>({});
   const [expandedMetadata, setExpandedMetadata] = useState<ExpandedMetadataState>({});
   const [hoveredElement, setHoveredElement] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState(prompt);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replayOutput, setReplayOutput] = useState<string | null>(null);
+  const [replayError, setReplayError] = useState<string | null>(null);
+  const [traces, setTraces] = useState<Trace[]>([]);
 
   useEffect(() => {
     setCopied(false);
     setCopiedFields({});
+    setEditMode(false);
+    setEditedPrompt(prompt);
+    setReplayOutput(null);
+    setReplayError(null);
+    setActiveTab('prompt-output'); // Reset to first tab when dialog opens
   }, [prompt]);
+
+  // Fetch traces once when evaluationId changes
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+
+    const loadTraces = async () => {
+      if (!evaluationId || !fetchTraces) {
+        setTraces([]);
+        return;
+      }
+
+      try {
+        const fetchedTraces = await fetchTraces(evaluationId, controller.signal);
+        if (isActive) {
+          setTraces(fetchedTraces || []);
+        }
+      } catch (error) {
+        if (isActive && (error as Error).name !== 'AbortError') {
+          setTraces([]);
+        }
+      }
+    };
+
+    loadTraces();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [evaluationId, fetchTraces]);
 
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -201,10 +247,46 @@ export default function EvalOutputPromptDialog({
     await navigator.clipboard.writeText(text);
     setCopiedFields((prev) => ({ ...prev, [key]: true }));
 
-    // Reset copied status after 2 seconds
     setTimeout(() => {
       setCopiedFields((prev) => ({ ...prev, [key]: false }));
     }, 2000);
+  };
+
+  const handleReplay = async () => {
+    if (!evaluationId || !provider) {
+      setReplayError('Missing evaluation ID or provider');
+      return;
+    }
+
+    if (!onReplay) {
+      setReplayError('Replay functionality is not available');
+      return;
+    }
+
+    setReplayLoading(true);
+    setReplayError(null);
+    setReplayOutput(null);
+
+    try {
+      const result = await onReplay({
+        evaluationId,
+        testIndex,
+        prompt: editedPrompt,
+        variables,
+      });
+
+      if (result.error) {
+        setReplayError(result.error);
+      } else if (result.output) {
+        setReplayOutput(result.output);
+      } else {
+        setReplayOutput('(No output returned)');
+      }
+    } catch (error) {
+      setReplayError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setReplayLoading(false);
+    }
   };
 
   const handleMetadataClick = (key: string) => {
@@ -215,221 +297,269 @@ export default function EvalOutputPromptDialog({
     setExpandedMetadata((prev: ExpandedMetadataState) => ({
       ...prev,
       [key]: {
-        expanded: isDoubleClick ? false : true,
+        expanded: !isDoubleClick,
         lastClickTime: now,
       },
     }));
   };
 
+  const handleApplyFilter = (
+    field: string,
+    value: string,
+    operator: 'equals' | 'contains' = 'equals',
+  ) => {
+    onResetFilters?.();
+    onAddFilter?.({
+      type: 'metadata',
+      operator,
+      value: typeof value === 'string' ? value : JSON.stringify(value),
+      field,
+    });
+    onClose();
+  };
+
+  const handleCancel = () => {
+    setEditedPrompt(prompt);
+    setReplayOutput(null);
+    setReplayError(null);
+  };
+
   let parsedMessages: Message[] = [];
   try {
-    parsedMessages = JSON.parse(metadata?.messages || '[]');
+    const messagesValue = metadata?.messages;
+    parsedMessages = JSON.parse(typeof messagesValue === 'string' ? messagesValue : '[]');
   } catch {}
 
+  const citationsData = metadata?.citations as Citation | Citation[] | undefined;
+
+  const hasOutputContent = Boolean(
+    output || replayOutput || metadata?.redteamFinalPrompt || citationsData,
+  );
+
+  const redteamHistoryRaw = (metadata?.redteamHistory || metadata?.redteamTreeHistory || []) as
+    | RedteamHistoryEntry[]
+    | unknown[];
+  const redteamHistoryMessages = (Array.isArray(redteamHistoryRaw) ? redteamHistoryRaw : [])
+    .filter((entry): entry is RedteamHistoryEntry => {
+      const e = entry as RedteamHistoryEntry;
+      return Boolean(e?.prompt && e?.output);
+    })
+    .flatMap((entry: RedteamHistoryEntry) => [
+      {
+        role: 'user' as const,
+        content: entry.prompt!,
+        audio: entry.promptAudio,
+        image: entry.promptImage,
+      },
+      {
+        role: 'assistant' as const,
+        content: entry.output!,
+        audio: entry.outputAudio,
+        image: entry.outputImage,
+      },
+    ]);
+
+  const hasEvaluationData = gradingResults && gradingResults.length > 0;
+  const hasMessagesData = parsedMessages.length > 0 || redteamHistoryMessages.length > 0;
+  const hasMetadata =
+    metadata &&
+    Object.keys(metadata).filter((key) => !HIDDEN_METADATA_KEYS.includes(key)).length > 0;
+
+  const visibleTabs: string[] = ['prompt-output'];
+  if (hasEvaluationData) {
+    visibleTabs.push('evaluation');
+  }
+  if (hasMessagesData) {
+    visibleTabs.push('messages');
+  }
+  if (hasMetadata) {
+    visibleTabs.push('metadata');
+  }
+
+  // Show traces tab only when there's actual trace data
+  const hasTracesData = traces.length > 0;
+
+  if (hasTracesData) {
+    visibleTabs.push('traces');
+  }
+
+  // Ensure active tab is valid, fallback to first tab if not
+  const currentTab = visibleTabs.includes(activeTab) ? activeTab : 'prompt-output';
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
-      <DialogTitle>Details{provider && `: ${provider}`}</DialogTitle>
-      <DialogContent>
-        <Box
-          mb={2}
-          position="relative"
-          onMouseEnter={() => setHoveredElement('prompt')}
-          onMouseLeave={() => setHoveredElement(null)}
+    <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <SheetContent
+        side="right"
+        className="w-full sm:w-[85vw] sm:max-w-none p-0 gap-0 flex flex-col"
+        hideCloseButton
+      >
+        {/* Header with title and close button */}
+        <SheetHeader className="flex flex-row items-center justify-between p-4 border-b border-border space-y-0">
+          <SheetTitle>Details{provider && `: ${provider}`}</SheetTitle>
+          <SheetDescription className="sr-only">
+            View prompt, output, evaluation results, and metadata details
+          </SheetDescription>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="close"
+            className="size-8 ml-2"
+          >
+            <X className="size-4" />
+          </Button>
+        </SheetHeader>
+
+        {/* Main content area with tabs */}
+        <Tabs
+          value={currentTab}
+          onValueChange={setActiveTab}
+          className="flex flex-col flex-1 overflow-hidden"
         >
-          <Typography variant="subtitle1" style={{ marginBottom: '1rem' }}>
-            Prompt
-          </Typography>
-          <div style={{ position: 'relative' }}>
-            <TextareaAutosize
-              readOnly
-              value={prompt}
-              style={{ width: '100%', padding: '0.75rem' }}
-              maxRows={20}
-            />
-            {(hoveredElement === 'prompt' || copied) && (
-              <IconButton
-                onClick={() => copyToClipboard(prompt)}
-                sx={copyButtonSx}
-                size="small"
-                aria-label="Copy prompt"
+          <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent px-4 h-auto py-0">
+            <TabsTrigger
+              value="prompt-output"
+              className="-mb-px rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-3"
+            >
+              {hasOutputContent ? 'Prompt & Output' : 'Prompt'}
+            </TabsTrigger>
+            {hasEvaluationData && (
+              <TabsTrigger
+                value="evaluation"
+                className="-mb-px rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-3"
               >
-                {copied ? <CheckIcon /> : <ContentCopyIcon />}
-              </IconButton>
+                Evaluation
+              </TabsTrigger>
+            )}
+            {hasMessagesData && (
+              <TabsTrigger
+                value="messages"
+                className="-mb-px rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-3"
+              >
+                Messages
+              </TabsTrigger>
+            )}
+            {hasMetadata && (
+              <TabsTrigger
+                value="metadata"
+                className="-mb-px rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-3"
+              >
+                Metadata
+              </TabsTrigger>
+            )}
+            {hasTracesData && (
+              <TabsTrigger
+                value="traces"
+                className="-mb-px rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-3"
+              >
+                Traces
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          {/* Tab Panels Container */}
+          <div className="flex-1 overflow-auto p-4">
+            {/* Prompt & Output Panel */}
+            <TabsContent value="prompt-output" className="mt-0">
+              <PromptEditor
+                prompt={prompt}
+                editMode={editMode}
+                editedPrompt={editedPrompt}
+                replayLoading={replayLoading}
+                replayError={replayError}
+                onEditModeChange={setEditMode}
+                onPromptChange={setEditedPrompt}
+                onReplay={handleReplay}
+                onCancel={handleCancel}
+                onCopy={() => copyToClipboard(prompt)}
+                copied={copied}
+                hoveredElement={hoveredElement}
+                onMouseEnter={setHoveredElement}
+                onMouseLeave={() => setHoveredElement(null)}
+                CodeDisplay={CodeDisplay}
+                subtitleTypographyClassName={subtitleTypographyClassName}
+                readOnly={readOnly}
+              />
+              {hasOutputContent && (
+                <OutputsPanel
+                  output={output}
+                  replayOutput={replayOutput}
+                  providerPrompt={providerPrompt}
+                  redteamFinalPrompt={
+                    typeof metadata?.redteamFinalPrompt === 'string'
+                      ? metadata.redteamFinalPrompt
+                      : undefined
+                  }
+                  copiedFields={copiedFields}
+                  hoveredElement={hoveredElement}
+                  onCopy={copyFieldToClipboard}
+                  onMouseEnter={setHoveredElement}
+                  onMouseLeave={() => setHoveredElement(null)}
+                  CodeDisplay={CodeDisplay}
+                  citations={citationsData}
+                />
+              )}
+            </TabsContent>
+
+            {/* Evaluation Panel */}
+            {hasEvaluationData && (
+              <TabsContent value="evaluation" className="mt-0">
+                <EvaluationPanel gradingResults={gradingResults} />
+              </TabsContent>
+            )}
+
+            {/* Messages Panel */}
+            {hasMessagesData && (
+              <TabsContent value="messages" className="mt-0">
+                {parsedMessages.length > 0 && (
+                  <ChatMessages
+                    messages={parsedMessages}
+                    displayTurnCount={parsedMessages.length > 2}
+                    maxTurns={Math.ceil(parsedMessages.length / 2)}
+                  />
+                )}
+                {redteamHistoryMessages.length > 0 && (
+                  <div className={parsedMessages.length > 0 ? 'mt-6' : ''}>
+                    <ChatMessages
+                      messages={redteamHistoryMessages}
+                      displayTurnCount={redteamHistoryMessages.length > 2}
+                      maxTurns={Math.ceil(redteamHistoryMessages.length / 2)}
+                    />
+                  </div>
+                )}
+              </TabsContent>
+            )}
+
+            {/* Metadata Panel */}
+            {hasMetadata && (
+              <TabsContent value="metadata" className="mt-0">
+                <MetadataPanel
+                  metadata={metadata}
+                  expandedMetadata={expandedMetadata}
+                  copiedFields={copiedFields}
+                  onMetadataClick={handleMetadataClick}
+                  onCopy={copyFieldToClipboard}
+                  onApplyFilter={handleApplyFilter}
+                  cloudConfig={cloudConfig}
+                />
+              </TabsContent>
+            )}
+
+            {/* Traces Panel */}
+            {hasTracesData && (
+              <TabsContent value="traces" className="mt-0">
+                <DebuggingPanel
+                  evaluationId={evaluationId}
+                  testCaseId={testCaseId}
+                  testIndex={testIndex}
+                  promptIndex={promptIndex}
+                  traces={traces}
+                />
+              </TabsContent>
             )}
           </div>
-        </Box>
-        {metadata?.redteamFinalPrompt && (
-          <Box
-            my={2}
-            position="relative"
-            onMouseEnter={() => setHoveredElement('redteamFinalPrompt')}
-            onMouseLeave={() => setHoveredElement(null)}
-          >
-            <Typography variant="subtitle1" style={{ marginBottom: '1rem', marginTop: '1rem' }}>
-              Modified User Input (Red Team)
-            </Typography>
-            <div style={{ position: 'relative' }}>
-              <TextareaAutosize
-                readOnly
-                maxRows={20}
-                value={metadata.redteamFinalPrompt}
-                style={{ width: '100%', padding: '0.75rem' }}
-              />
-              {(hoveredElement === 'redteamFinalPrompt' || copiedFields['redteamFinalPrompt']) && (
-                <IconButton
-                  onClick={() =>
-                    copyFieldToClipboard('redteamFinalPrompt', metadata.redteamFinalPrompt)
-                  }
-                  sx={{
-                    ...copyButtonSx,
-                    top: '8px',
-                  }}
-                  size="small"
-                  aria-label="Copy modified user input"
-                >
-                  {copiedFields['redteamFinalPrompt'] ? <CheckIcon /> : <ContentCopyIcon />}
-                </IconButton>
-              )}
-            </div>
-          </Box>
-        )}
-        {output && (
-          <Box
-            my={2}
-            position="relative"
-            onMouseEnter={() => setHoveredElement('output')}
-            onMouseLeave={() => setHoveredElement(null)}
-          >
-            <Typography variant="subtitle1" style={{ marginBottom: '1rem', marginTop: '1rem' }}>
-              Output
-            </Typography>
-            <div style={{ position: 'relative' }}>
-              <TextareaAutosize
-                readOnly
-                maxRows={20}
-                value={output}
-                style={{ width: '100%', padding: '0.75rem' }}
-              />
-              {(hoveredElement === 'output' || copiedFields['output']) && (
-                <IconButton
-                  onClick={() => copyFieldToClipboard('output', output)}
-                  sx={{
-                    ...copyButtonSx,
-                    top: '8px',
-                  }}
-                  size="small"
-                  aria-label="Copy output"
-                >
-                  {copiedFields['output'] ? <CheckIcon /> : <ContentCopyIcon />}
-                </IconButton>
-              )}
-            </div>
-          </Box>
-        )}
-        <AssertionResults gradingResults={gradingResults} />
-        {parsedMessages && parsedMessages.length > 0 && <ChatMessages messages={parsedMessages} />}
-        {metadata && Object.keys(metadata).length > 0 && (
-          <Box my={2}>
-            <Typography variant="subtitle1" style={{ marginBottom: '1rem', marginTop: '1rem' }}>
-              Metadata
-            </Typography>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>
-                      <strong>Key</strong>
-                    </TableCell>
-                    <TableCell>
-                      <strong>Value</strong>
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Object.entries(metadata).map(([key, value]) => {
-                    const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
-                    const truncatedValue = ellipsize(stringValue, 300);
-                    const isUrl = typeof value === 'string' && isValidUrl(value);
-
-                    return (
-                      <TableRow key={key}>
-                        <TableCell>{key}</TableCell>
-                        <TableCell
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                            cursor: isUrl ? 'auto' : 'pointer',
-                            position: 'relative',
-                          }}
-                          onClick={() => !isUrl && handleMetadataClick(key)}
-                          onMouseEnter={() => setHoveredElement(`metadata-${key}`)}
-                          onMouseLeave={() => setHoveredElement(null)}
-                        >
-                          {isUrl ? (
-                            <Link href={value} target="_blank" rel="noopener noreferrer">
-                              {expandedMetadata[key]?.expanded ? stringValue : truncatedValue}
-                            </Link>
-                          ) : expandedMetadata[key]?.expanded ? (
-                            stringValue
-                          ) : (
-                            truncatedValue
-                          )}
-                          {(hoveredElement === `metadata-${key}` || copiedFields[key]) && (
-                            <IconButton
-                              size="small"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyFieldToClipboard(key, stringValue);
-                              }}
-                              sx={copyButtonSx}
-                              aria-label={`Copy metadata value for ${key}`}
-                            >
-                              {copiedFields[key] ? (
-                                <CheckIcon fontSize="small" />
-                              ) : (
-                                <ContentCopyIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
-        )}
-        {(metadata?.redteamHistory || metadata?.redteamTreeHistory) && (
-          <Box mt={2} mb={3}>
-            <ChatMessages
-              title="Attempts"
-              messages={(metadata?.redteamHistory ?? metadata?.redteamTreeHistory ?? [])
-                .filter((entry: any) => entry?.prompt && entry?.output)
-                .flatMap(
-                  (entry: {
-                    prompt: string;
-                    output: string;
-                    score?: number;
-                    isOnTopic?: boolean;
-                    graderPassed?: boolean;
-                  }) => [
-                    {
-                      role: 'user' as const,
-                      content: entry.prompt,
-                    },
-                    {
-                      role: 'assistant' as const,
-                      content: entry.output,
-                    },
-                  ],
-                )}
-            />
-          </Box>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-      </DialogActions>
-    </Dialog>
+        </Tabs>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -1,3 +1,4 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCache } from '../../../src/cache';
 import {
   AnthropicLlmRubricProvider,
@@ -5,13 +6,19 @@ import {
 } from '../../../src/providers/anthropic/defaults';
 import { AnthropicMessagesProvider } from '../../../src/providers/anthropic/messages';
 
-jest.mock('proxy-agent', () => ({
-  ProxyAgent: jest.fn().mockImplementation(() => ({})),
-}));
+vi.mock('proxy-agent', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+
+    ProxyAgent: vi.fn().mockImplementation(function () {
+      return {};
+    }),
+  };
+});
 
 describe('Anthropic Default Providers', () => {
   afterEach(async () => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     await clearCache();
   });
 
@@ -19,7 +26,6 @@ describe('Anthropic Default Providers', () => {
     it('should return all provider implementations', () => {
       const providers = getAnthropicProviders();
 
-      expect(providers.datasetGenerationProvider).toBeInstanceOf(AnthropicMessagesProvider);
       expect(providers.gradingJsonProvider).toBeInstanceOf(AnthropicMessagesProvider);
       expect(providers.gradingProvider).toBeInstanceOf(AnthropicMessagesProvider);
       expect(providers.llmRubricProvider).toBeInstanceOf(AnthropicLlmRubricProvider);
@@ -74,7 +80,7 @@ describe('Anthropic Default Providers', () => {
         }),
       };
 
-      jest.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockResolvedValue(mockApiResponse);
+      vi.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockResolvedValue(mockApiResponse);
 
       const result = await provider.callApi('Test prompt');
 
@@ -92,7 +98,7 @@ describe('Anthropic Default Providers', () => {
         output: { confession: 'I am not a string' },
       };
 
-      jest.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockResolvedValue(mockApiResponse);
+      vi.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockResolvedValue(mockApiResponse);
 
       const result = await provider.callApi('Test prompt');
 
@@ -104,7 +110,7 @@ describe('Anthropic Default Providers', () => {
         output: 'Invalid JSON',
       };
 
-      jest.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockResolvedValue(mockApiResponse);
+      vi.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockResolvedValue(mockApiResponse);
 
       const result = await provider.callApi('Test prompt');
 
@@ -113,7 +119,7 @@ describe('Anthropic Default Providers', () => {
 
     it('should handle API errors', async () => {
       const mockError = new Error('API Error');
-      jest.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockRejectedValue(mockError);
+      vi.spyOn(AnthropicMessagesProvider.prototype, 'callApi').mockRejectedValue(mockError);
 
       await expect(provider.callApi('Test prompt')).rejects.toThrow('API Error');
     });

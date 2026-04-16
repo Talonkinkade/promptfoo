@@ -1,62 +1,135 @@
 # openai-responses (OpenAI Responses API Examples)
 
-This example demonstrates how to use OpenAI's Responses API to generate model outputs with advanced capabilities including image understanding, web search, function calling, and reasoning.
-
-## Features Demonstrated
-
-- Text generation with the OpenAI Responses API
-- Structured JSON output using schemas
-- Image input processing
-- Web search integration
-- Function/tool calling
-- Mathematical reasoning with o-series models
-
-## Environment Variables
-
-This example requires the following environment variables:
-
-- `OPENAI_API_KEY` - Your OpenAI API key
-
-You can set this in a `.env` file or directly in your environment.
-
-## Running the Example
+This directory contains examples for testing OpenAI's Responses API with promptfoo.
 
 You can run this example with:
 
 ```bash
 npx promptfoo@latest init --example openai-responses
-# and then
 cd openai-responses
-
-# Run specific configs
-npx promptfoo eval -c promptfooconfig.yaml
-npx promptfoo eval -c promptfooconfig.image.yaml
-npx promptfoo eval -c promptfooconfig.web-search.yaml
-npx promptfoo eval -c promptfooconfig.function-call.yaml
-npx promptfoo eval -c promptfooconfig.reasoning.yaml
 ```
 
-## Configuration Files
+## Examples
 
-This example includes several configuration files, each demonstrating a different capability:
+### Basic Responses API (`promptfooconfig.yaml`)
 
-1. **Structured JSON Output** (`promptfooconfig.yaml`): Generates a structured story in JSON format with a schema
-2. **Image Input** (`promptfooconfig.image.yaml`): Processes images with structured JSON input
-3. **Web Search** (`promptfooconfig.web-search.yaml`): Retrieves recent information from the web using `gpt-4o`
-4. **Function Calling** (`promptfooconfig.function-call.yaml`): Calls a weather function with parameters using `o1-pro`
-5. **Mathematical Reasoning** (`promptfooconfig.reasoning.yaml`): Solves math problems step-by-step using `o3-mini`
+Basic example showing how to use the Responses API with the GPT-5.4 family (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`) and a GPT-4.1 comparison model.
 
-## Key Differences from Chat Completions API
+### External Response Format (`promptfooconfig.external-format.yaml`)
 
-- Can accept simple strings or structured message arrays as input
-- Returns an array of output items with explicit types
-- Function calls appear directly in the output array
-- Built-in tools like web search are natively supported
-- Supports o-series models with configurable reasoning effort
-- Structured output using JSON schema with a different format structure
+Example demonstrating how to load `response_format` configuration from external files. This is useful for:
 
-## Supported Models
+- Reusing complex JSON schemas across multiple configurations
+- Managing large schemas in separate files for better organization
+- Version controlling schemas independently
 
-- `openai:responses:gpt-4o` - Vision-capable model
-- `openai:responses:o1-mini`, `openai:responses:o1`, `openai:responses:o1-pro` - Reasoning models
-- `openai:responses:o3-mini`, `openai:responses:o3` - Latest reasoning models
+This example compares inline vs. external file approach:
+
+- **Inline**: JSON schema defined directly in the config
+- **External**: JSON schema loaded from `response_format.json` using `file://` syntax
+
+### Function Calling (`promptfooconfig.function-call.yaml`)
+
+Example demonstrating function calling capabilities with the Responses API.
+
+### Function Callbacks (`promptfooconfig.function-callback.yaml`)
+
+Example showing how to use function callbacks to execute functions locally instead of just returning the function call. This allows you to:
+
+- Execute custom logic when the model calls a function
+- Return the result directly to the test assertions
+- Test end-to-end workflows including function execution
+
+Key differences from regular function calling:
+
+- Uses `functionToolCallbacks` to define JavaScript functions
+- Functions are executed locally and results are returned
+- Perfect for testing tool-using AI agents
+
+### Reasoning Models (`promptfooconfig.reasoning.yaml`)
+
+Example showing how to use reasoning models (o1, o3, etc.) with specific configurations.
+
+### GPT-5.1 (`promptfooconfig.gpt-5.1.yaml`)
+
+Example demonstrating GPT-5.1's key features including:
+
+- **`none` reasoning mode**: No reasoning tokens for fastest responses
+- **Verbosity control**: Adjustable output length (`low`, `medium`, `high`)
+- **Reasoning effort levels**: Compare `none`, `medium`, and `high` reasoning modes
+- **Coding tasks**: Optimized for coding and problem-solving workflows
+
+### GPT-5.2 (`promptfooconfig.gpt-5.2.yaml`)
+
+Example comparing GPT-5.2 with different reasoning effort levels:
+
+- **none**: No reasoning tokens for fastest responses
+- **medium**: Balanced reasoning for most tasks
+- **high**: Maximum reasoning for complex problem-solving
+
+### Image Processing (`promptfooconfig.image.yaml`)
+
+Example demonstrating image input capabilities with vision models.
+
+### Web Search (`promptfooconfig.web-search.yaml`)
+
+Example showing web search capabilities.
+
+### Codex Models (`promptfooconfig.codex.yaml`)
+
+Example using Codex models for code generation tasks.
+
+### MCP (Model Context Protocol) (`promptfooconfig.mcp.yaml`)
+
+Example demonstrating OpenAI's MCP integration with remote MCP servers. This example uses the DeepWiki MCP server to query GitHub repositories.
+
+#### MCP Features Demonstrated:
+
+- Remote MCP server integration
+- Tool filtering with `allowed_tools`
+- Approval settings configuration
+- Authentication headers (when needed)
+
+## Running the Examples
+
+To run any of these examples:
+
+```bash
+# Basic Responses API example
+npx promptfoo eval -c promptfooconfig.yaml
+
+# External response format example
+npx promptfoo eval -c promptfooconfig.external-format.yaml
+
+# MCP example
+npx promptfoo eval -c promptfooconfig.mcp.yaml
+
+# Function calling example
+npx promptfoo eval -c promptfooconfig.function-call.yaml
+
+# Function callbacks example
+npx promptfoo eval -c promptfooconfig.function-callback.yaml
+
+# Reasoning models example
+npx promptfoo eval -c promptfooconfig.reasoning.yaml
+
+# GPT-5.1 example
+npx promptfoo eval -c promptfooconfig.gpt-5.1.yaml
+
+# GPT-5.2 example
+npx promptfoo eval -c promptfooconfig.gpt-5.2.yaml
+
+```
+
+## Prerequisites
+
+- OpenAI API key set in `OPENAI_API_KEY` environment variable
+- For MCP examples: Access to remote MCP servers (some may require authentication)
+
+## Notes
+
+- The MCP example uses the public DeepWiki MCP server which doesn't require authentication
+- For production use with MCP, carefully review the data being shared with third-party servers
+- Some MCP servers may require API keys or authentication tokens in the `headers` configuration
+- External file references support both JSON and YAML formats
+- External files are resolved relative to the config file location

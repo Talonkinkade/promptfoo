@@ -1,5 +1,7 @@
+import { describe, expect, it } from 'vitest';
 import { addHexEncoding } from '../../../src/redteam/strategies/hex';
-import type { TestCase } from '../../../src/types';
+
+import type { TestCase } from '../../../src/types/index';
 
 describe('addHexEncoding', () => {
   it('should encode variable value as hex and append /Hex to metrics', () => {
@@ -23,6 +25,7 @@ describe('addHexEncoding', () => {
     expect(result[0].assert![0].metric).toBe('accuracy/Hex');
     expect(result[0].metadata).toEqual({
       strategyId: 'hex',
+      originalText: 'hello',
     });
   });
 

@@ -1,4 +1,4 @@
-# redteam-azure-assistant
+# redteam-azure-assistant (Red Team Azure Assistant)
 
 Red team testing for Azure OpenAI Assistants with function tools to evaluate security boundaries.
 
@@ -6,17 +6,18 @@ You can run this example with:
 
 ```bash
 npx promptfoo@latest init --example redteam-azure-assistant
+cd redteam-azure-assistant
 ```
 
 ## Overview
 
-This example demonstrates how to security test an Azure OpenAI Assistant that has access to sensitive HR data through function tools. It includes mock HR database functions and a configured redteam setup.
+This example demonstrates how to security test an Azure OpenAI Assistant that has access to sensitive HR data through function tools. It includes mock HR database functions and a configured red team setup.
 
 ## Quick Start
 
 1. **Setup environment variables**:
 
-   ```
+   ```text
    AZURE_API_KEY=your_key
    AZURE_OPENAI_API_HOST=your-resource.openai.azure.com
    AZURE_DEPLOYMENT_NAME=your_deployment_name
@@ -24,7 +25,6 @@ This example demonstrates how to security test an Azure OpenAI Assistant that ha
    ```
 
 2. **Update configuration**:
-
    - Edit `promptfooconfig.yaml`
    - Replace `azure:assistant:asst_V3UgNCNUSAtHQdit8YimCKlJ` with your Assistant ID
    - Update `apiHost` to your Azure endpoint
@@ -52,7 +52,7 @@ This example demonstrates how to security test an Azure OpenAI Assistant that ha
 
 - **Mock HR Functions**: Employee data, salary information, and document access
 - **Security Boundaries**: System instructions limiting access to sensitive data
-- **Redteam Configuration**: Pre-configured to test data privacy, access control, and security
+- **Red team Configuration**: Pre-configured to test data privacy, access control, and security
 - **Named Entities**: Sample employee names for more realistic attacks
 
 ## Security Testing Focus

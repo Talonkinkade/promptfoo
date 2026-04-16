@@ -1,3 +1,8 @@
+---
+sidebar_label: Sandboxed Evaluations of LLM-Generated Code
+description: Safely evaluate and benchmark LLM-generated code in isolated Docker containers to prevent security risks and catch errors before production deployment
+---
+
 # Sandboxed Evaluations of LLM-Generated Code
 
 You're using LLMs to generate code snippets, functions, or even entire programs. Blindly trusting and executing this generated code in our production environments - or even in development environments - can be a severe security risk.
@@ -34,11 +39,11 @@ docker pull python:3.9-alpine
 Create a file named `promptfooconfig.yaml`:
 
 ```yaml
-prompts: code_generation_prompt.txt
+prompts: file://code_generation_prompt.txt
 
 providers:
-  - ollama:chat:llama3:70b
-  - openai:gpt-4o
+  - openai:gpt-5
+  - ollama:chat:llama4:scout
 
 tests:
   - vars:
@@ -66,7 +71,7 @@ defaultTest:
 This configuration does several important things:
 
 1. It tells promptfoo to use our prompt template
-1. We're testing GPT-4o and Llama 3 (you can replace this with a [provider](/docs/providers) of your choice. Promptfoo supports both local and commercial providers).
+1. We're testing GPT-5 and Llama 4 (you can replace this with a [provider](/docs/providers) of your choice. Promptfoo supports both local and commercial providers).
 1. It defines coding problems. For each problem, it specifies the function name, a test input, and the expected output.
 1. It sets up a Python-based assertion that will run for each test case, validating the generated code.
 

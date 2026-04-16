@@ -1,10 +1,17 @@
-# Ollama Red Team Example
+# redteam-ollama (Ollama Red Team Example)
+
+You can run this example with:
+
+```bash
+npx promptfoo@latest init --example redteam-ollama
+cd redteam-ollama
+```
 
 This example shows how to red team an Ollama model using promptfoo. For a detailed walkthrough, see the [blog post](https://promptfoo.dev/blog/red-team-ollama-model/).
 
 ## Prerequisites
 
-1. Install Node.js version 18 or later. [Download Node.js](https://nodejs.org/en/download/)
+1. Install Node.js 20+. [Download Node.js](https://nodejs.org/en/download/)
 2. Install Ollama from [ollama.ai](https://ollama.ai)
 3. Start the Ollama service:
 

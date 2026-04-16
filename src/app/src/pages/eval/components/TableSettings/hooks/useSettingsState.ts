@@ -1,7 +1,8 @@
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { useStore as useResultsViewStore } from '../../store';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-export interface SettingsState {
+import { useResultsViewSettingsStore } from '../../store';
+
+interface SettingsState {
   maxTextLength: number;
   wordBreak: string;
   showInferenceDetails: boolean;
@@ -9,13 +10,14 @@ export interface SettingsState {
   prettifyJson: boolean;
   showPrompts: boolean;
   showPassFail: boolean;
+  showPassReasons: boolean;
   stickyHeader: boolean;
   maxImageWidth: number;
   maxImageHeight: number;
 }
 
 export const useSettingsState = (isOpen: boolean) => {
-  const store = useResultsViewStore();
+  const store = useResultsViewSettingsStore();
   const {
     maxTextLength,
     setMaxTextLength,
@@ -31,6 +33,8 @@ export const useSettingsState = (isOpen: boolean) => {
     setShowPrompts,
     showPassFail,
     setShowPassFail,
+    showPassReasons,
+    setShowPassReasons,
     stickyHeader,
     setStickyHeader,
     maxImageWidth,
@@ -39,8 +43,14 @@ export const useSettingsState = (isOpen: boolean) => {
     setMaxImageHeight,
   } = store;
 
+  const sanitizedMaxTextLength =
+    maxTextLength === Number.POSITIVE_INFINITY
+      ? Number.POSITIVE_INFINITY
+      : Number.isFinite(maxTextLength) && maxTextLength >= 25
+        ? maxTextLength
+        : 500;
   const [localMaxTextLength, setLocalMaxTextLength] = useState(
-    maxTextLength === Number.POSITIVE_INFINITY ? 1001 : maxTextLength,
+    sanitizedMaxTextLength === Number.POSITIVE_INFINITY ? 1001 : sanitizedMaxTextLength,
   );
 
   const initialStateRef = useRef<SettingsState>({
@@ -51,6 +61,7 @@ export const useSettingsState = (isOpen: boolean) => {
     prettifyJson,
     showPrompts,
     showPassFail,
+    showPassReasons,
     stickyHeader,
     maxImageWidth,
     maxImageHeight,
@@ -66,6 +77,7 @@ export const useSettingsState = (isOpen: boolean) => {
         prettifyJson,
         showPrompts,
         showPassFail,
+        showPassReasons,
         stickyHeader,
         maxImageWidth,
         maxImageHeight,
@@ -80,6 +92,7 @@ export const useSettingsState = (isOpen: boolean) => {
     prettifyJson,
     showPrompts,
     showPassFail,
+    showPassReasons,
     stickyHeader,
     maxImageWidth,
     maxImageHeight,
@@ -95,6 +108,7 @@ export const useSettingsState = (isOpen: boolean) => {
       prettifyJson !== initialState.prettifyJson ||
       showPrompts !== initialState.showPrompts ||
       showPassFail !== initialState.showPassFail ||
+      showPassReasons !== initialState.showPassReasons ||
       stickyHeader !== initialState.stickyHeader ||
       maxImageWidth !== initialState.maxImageWidth ||
       maxImageHeight !== initialState.maxImageHeight
@@ -107,6 +121,7 @@ export const useSettingsState = (isOpen: boolean) => {
     prettifyJson,
     showPrompts,
     showPassFail,
+    showPassReasons,
     stickyHeader,
     maxImageWidth,
     maxImageHeight,
@@ -131,6 +146,7 @@ export const useSettingsState = (isOpen: boolean) => {
     setPrettifyJson(true);
     setShowPrompts(false);
     setShowPassFail(true);
+    setShowPassReasons(false);
     setShowInferenceDetails(true);
     setMaxTextLength(500);
     setLocalMaxTextLength(500);
@@ -143,6 +159,7 @@ export const useSettingsState = (isOpen: boolean) => {
     setPrettifyJson,
     setShowPrompts,
     setShowPassFail,
+    setShowPassReasons,
     setShowInferenceDetails,
     setMaxTextLength,
     setMaxImageWidth,

@@ -1,34 +1,131 @@
-# Google AI Studio (Gemini) Example
+# google-aistudio-tools (Google AI Studio Tools)
 
-This example demonstrates using Google's Gemini models with promptfoo to evaluate math puzzle solving capabilities.
+This example demonstrates how to use Google AI Studio's function calling, search capabilities, code execution, and URL context features with promptfoo.
+
+You can run this example with:
+
+```bash
+npx promptfoo@latest init --example google-aistudio-tools
+cd google-aistudio-tools
+```
 
 ## Prerequisites
 
-- promptfoo CLI installed (`npm install -g promptfoo` or `brew install promptfoo`)
-- Google AI Studio API key set as `GOOGLE_API_KEY`
+- Google AI Studio API key set as `GOOGLE_API_KEY` in your environment
 
-## Available Models
+## Overview
 
-The example tests across multiple Gemini models:
+This example shows how to:
 
-- Gemini 2.5 Pro Experimental
-- Gemini 2.0 Flash
-- Gemini 2.0 Flash Thinking
-- Gemini 1.5 Flash
-- Gemini 1.5 Pro - Standard model for complex reasoning, used with both structured JSON output and function calling capabilities
+1. **Function Calling**: Use Gemini to invoke predefined functions based on user queries
+2. **Google Search Integration**: Get up-to-date information from the web using Gemini models with search grounding
+3. **Code Execution**: Execute Python code to solve computational problems
+4. **URL Context**: Extract and analyze content from web URLs
 
-## Running the Eval
+## Function Calling Example
 
-1. Get a local copy of the configuration:
+The function calling configuration (`promptfooconfig.yaml`) demonstrates:
 
-```sh
-promptfoo init --example google-aistudio-gemini
+- Defining a weather function in `tools.json`
+- Validating that Gemini models correctly produce structured function calls
+- Testing that the location parameter matches the user's query
+
+Run with:
+
+```bash
+promptfoo eval -c promptfooconfig.yaml
 ```
 
-2. Run the example:
+## Search Grounding Example
 
-```sh
-promptfoo eval
+The search grounding configuration (`promptfooconfig.search.yaml`) demonstrates:
+
+- Using Gemini 2.5 Flash with Google Search as a tool
+- Using Gemini 2.5 Pro with thinking capabilities and Search grounding
+- Using Gemini 1.5 Flash with dynamic retrieval configuration
+- Testing queries that benefit from real-time web information
+- Verifying responses include relevant information
+
+Run with:
+
+```bash
+promptfoo eval -c promptfooconfig.search.yaml
 ```
 
-Afterwards, you can view the results by running `promptfoo view`
+## Code Execution Example
+
+The code execution configuration (`promptfooconfig.codeexecution.yaml`) demonstrates:
+
+- Testing computational problems that require code to solve
+- Verifying that the answer is correct from the code execution
+
+Run with:
+
+```bash
+promptfoo eval -c promptfooconfig.codeexecution.yaml
+```
+
+## URL Context Example
+
+The URL context configuration (`promptfooconfig.urlcontext.yaml`) demonstrates:
+
+- Using Gemini to extract and analyze content from web URLs
+- Combining URL context with search capabilities
+
+Run with:
+
+```bash
+promptfoo eval -c promptfooconfig.urlcontext.yaml
+```
+
+## Example Files
+
+- `promptfooconfig.yaml`: Function calling configuration
+- `promptfooconfig.search.yaml`: Search grounding configuration
+- `promptfooconfig.codeexecution.yaml`: Code execution configuration
+- `promptfooconfig.urlcontext.yaml`: URL context configuration
+- `tools.json`: Function definition for the weather example
+
+## Notes on Google Search Integration
+
+When using Search grounding in your own applications:
+
+- The API response includes search metadata and sources
+- Google requires displaying "Google Search Suggestions" in user-facing apps
+- Models can retrieve current information about events, prices, and technical updates
+
+### Search Methods
+
+This example demonstrates three approaches to search:
+
+1. **Search as a tool** (Gemini 2.5): Allows the model to decide when to use search
+
+   ```yaml
+   tools:
+     - googleSearch: {}
+   ```
+
+2. **Search with thinking** (Gemini 2.5): Adds thinking capabilities for better reasoning
+
+   ```yaml
+   generationConfig:
+     thinkingConfig:
+       thinkingBudget: 1024
+   tools:
+     - googleSearch: {}
+   ```
+
+3. **Dynamic retrieval** (Gemini 1.5): Controls when to use search with threshold settings
+   ```yaml
+   tools:
+     - googleSearchRetrieval:
+         dynamicRetrievalConfig:
+           mode: 'MODE_DYNAMIC'
+           dynamicThreshold: 0 # 0 = always use search, 1 = never use search
+   ```
+
+## Further Resources
+
+- [Google AI Studio Function Calling documentation](https://ai.google.dev/docs/function_calling)
+- [Google AI Studio Search Grounding documentation](https://ai.google.dev/docs/gemini_api/grounding)
+- [promptfoo Google Provider documentation](/docs/providers/google)

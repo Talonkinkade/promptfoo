@@ -1,12 +1,26 @@
 ---
-sidebar_position: 40
+sidebar_position: 41
+sidebar_label: Caching
+title: Caching Configuration - Performance Optimization
+description: Configure caching for faster LLM evaluations. Learn cache strategies, storage options, and performance optimization for prompt testing workflows.
+keywords:
+  [
+    LLM caching,
+    performance optimization,
+    evaluation speed,
+    cache configuration,
+    response caching,
+    testing efficiency,
+  ]
+pagination_prev: configuration/chat
+pagination_next: configuration/telemetry
 ---
 
 # Caching
 
 promptfoo caches the results of API calls to LLM providers to help save time and cost.
 
-The cache is managed by [`cache-manager`](https://www.npmjs.com/package/cache-manager/) with the [`cache-manager-fs-hash`](https://www.npmjs.com/package/cache-manager-fs-hash) store for disk-based caching. By default, promptfoo uses disk-based storage (`~/.promptfoo/cache`).
+The cache is managed by [`cache-manager`](https://www.npmjs.com/package/cache-manager/) with [`keyv`](https://www.npmjs.com/package/keyv) and [`keyv-file`](https://www.npmjs.com/package/keyv-file) for disk-based storage. By default, promptfoo uses disk-based storage (`~/.promptfoo/cache`).
 
 ## How Caching Works
 
@@ -23,7 +37,7 @@ For example:
 
 ```js
 // OpenAI - model, messages, settings
-`openai:gpt-4:${JSON.stringify({
+`gpt-5:${JSON.stringify({
   "messages": [...],
   "temperature": 0
 })}`
@@ -39,16 +53,17 @@ For example:
 
 - Successful API responses are cached with their complete response data
 - Error responses are not cached to allow for retry attempts
+- When `evaluateOptions.repeat` or `--repeat` is greater than 1, each repeat index uses a separate cache namespace. Re-running the same eval can reuse those per-repeat cached responses, while preserving distinct outputs between repeat 0, repeat 1, etc.
 - Cache is automatically invalidated when:
   - TTL expires (default: 14 days)
-  - Cache size exceeds limit (default: 10MB)
-  - Cache file count exceeds limit (default: 10,000)
   - Cache is manually cleared
 - Memory storage is used automatically when `NODE_ENV=test`
 
 ## Command Line
 
 If you're using the command line, call `promptfoo eval` with `--no-cache` to disable the cache, or set `{ evaluateOptions: { cache: false }}` in your config file.
+
+Use `--no-cache` with `--repeat` when you want every run to make fresh LLM calls instead of replaying each repeat index from cache.
 
 Use `promptfoo cache clear` command to clear the cache.
 
@@ -75,14 +90,12 @@ PROMPTFOO_CACHE_PATH=...
 
 The cache is configurable through environment variables:
 
-| Environment Variable           | Description                               | Default Value                                      |
-| ------------------------------ | ----------------------------------------- | -------------------------------------------------- |
-| PROMPTFOO_CACHE_ENABLED        | Enable or disable the cache               | true                                               |
-| PROMPTFOO_CACHE_TYPE           | `disk` or `memory`                        | `memory` if `NODE_ENV` is `test`, otherwise `disk` |
-| PROMPTFOO_CACHE_MAX_FILE_COUNT | Maximum number of files in the cache      | 10,000                                             |
-| PROMPTFOO_CACHE_PATH           | Path to the cache directory               | `~/.promptfoo/cache`                               |
-| PROMPTFOO_CACHE_TTL            | Time to live for cache entries in seconds | 14 days                                            |
-| PROMPTFOO_CACHE_MAX_SIZE       | Maximum size of the cache in bytes        | 10 MB                                              |
+| Environment Variable    | Description                               | Default Value                                      |
+| ----------------------- | ----------------------------------------- | -------------------------------------------------- |
+| PROMPTFOO_CACHE_ENABLED | Enable or disable the cache               | true                                               |
+| PROMPTFOO_CACHE_TYPE    | `disk` or `memory`                        | `memory` if `NODE_ENV` is `test`, otherwise `disk` |
+| PROMPTFOO_CACHE_PATH    | Path to the cache directory               | `~/.promptfoo/cache`                               |
+| PROMPTFOO_CACHE_TTL     | Time to live for cache entries in seconds | 14 days                                            |
 
 #### Additional Cache Details
 

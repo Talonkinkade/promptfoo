@@ -6,6 +6,7 @@ You can run this example with:
 
 ```bash
 npx promptfoo@latest init --example redteam-foundation-model
+cd redteam-foundation-model
 ```
 
 ## How to Use This Example
@@ -20,7 +21,7 @@ npx promptfoo@latest init --example redteam-foundation-model
 
 Create a `.env` file with your API keys:
 
-```
+```text
 OPENAI_API_KEY=your_openai_key_here
 ANTHROPIC_API_KEY=your_anthropic_key_here
 # Add other provider keys as needed
@@ -28,7 +29,7 @@ ANTHROPIC_API_KEY=your_anthropic_key_here
 
 ### Step 2: Configure Your Target Model
 
-**Important:** You must overwrite the default target in the command line. The configuration defaults to `openai:chat:gpt-4o-mini`:
+**Important:** You must overwrite the default target in the command line. The configuration defaults to `openai:chat:gpt-4.1-mini`:
 
 ```bash
 promptfoo redteam run --target openrouter:...

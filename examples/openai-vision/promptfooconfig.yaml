@@ -1,8 +1,10 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: OpenAI vision model image analysis and evaluation
+
 prompts:
   - file://prompt.json
 providers:
-  - openai:chat:gpt-4o
+  - openai:chat:gpt-5.4
 
 tests:
   - vars:

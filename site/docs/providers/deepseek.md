@@ -1,3 +1,8 @@
+---
+sidebar_label: DeepSeek
+description: Configure DeepSeek's OpenAI-compatible API with specialized chat and reasoning models, featuring 64K context windows and advanced caching for cost-effective LLM testing
+---
+
 # DeepSeek
 
 [DeepSeek](https://platform.deepseek.com/) provides an OpenAI-compatible API for their language models, with specialized models for both general chat and advanced reasoning tasks. The DeepSeek provider is compatible with all the options provided by the [OpenAI provider](/docs/providers/openai/).
@@ -21,7 +26,6 @@ providers:
 
   - id: deepseek:deepseek-reasoner # DeepSeek-R1 model
     config:
-      temperature: 0.0
       max_tokens: 8000
 ```
 
@@ -29,26 +33,39 @@ providers:
 
 - `temperature`
 - `max_tokens`
+- `cost`, `inputCost`, `outputCost` - Override promptfoo's pricing estimates (`inputCost` and `outputCost` take precedence over `cost`)
 - `top_p`, `presence_penalty`, `frequency_penalty`
 - `stream`
 - `showThinking` - Control whether reasoning content is included in the output (default: `true`, applies to deepseek-reasoner model)
 
 ## Available Models
 
-### deepseek-chat (DeepSeek-V3)
+:::note
 
-- General purpose model for conversations and content
-- 64K context window, 8K output tokens
-- Input: $0.014/1M (cache), $0.14/1M (no cache)
-- Output: $0.28/1M
+The API model names are aliases that automatically point to the latest versions: both `deepseek-chat` and `deepseek-reasoner` currently point to DeepSeek-V3.2, with the chat model using non-thinking mode and the reasoner model using thinking mode.
 
-### deepseek-reasoner (DeepSeek-R1)
+:::
 
-- Specialized for reasoning and problem-solving
-- 64K context, 32K reasoning tokens, 8K output tokens
-- Input: $0.14/1M (cache), $0.55/1M (no cache)
-- Output: $2.19/1M
+### deepseek-chat
+
+- General purpose model for conversations and content generation
+- 128K context window, up to 8K output tokens
+- Input: $0.028/1M (cache hit), $0.28/1M (cache miss)
+- Output: $0.42/1M
+
+### deepseek-reasoner
+
+- Specialized reasoning model with extended thinking capabilities
+- 128K context window, up to 64K output tokens (32K reasoning + final answer)
+- Input: $0.028/1M (cache hit), $0.28/1M (cache miss)
+- Output: $0.42/1M
 - Supports showing or hiding reasoning content through the `showThinking` parameter
+
+:::warning
+
+The reasoning model does not support `temperature`, `top_p`, `presence_penalty`, `frequency_penalty`, `logprobs`, or `top_logprobs` parameters. Setting these parameters will not trigger an error but will have no effect.
+
+:::
 
 ## Example Usage
 
@@ -58,7 +75,7 @@ Here's an example comparing DeepSeek with OpenAI on reasoning tasks:
 providers:
   - id: deepseek:deepseek-reasoner
     config:
-      temperature: 0.0
+      max_tokens: 8000
       showThinking: true # Include reasoning content in output (default)
   - id: openai:o-1
     config:
@@ -93,10 +110,15 @@ Thinking: <reasoning content>
 
 When set to `false`, only the final answer is included in the output. This is useful when you want better reasoning quality but don't want to expose the reasoning process to end users or in your assertions.
 
-See our [complete example](https://github.com/promptfoo/promptfoo/tree/main/examples/deepseek-r1-vs-openai-o1) that benchmarks it against OpenAI's o1 model on the MMLU reasoning tasks.
+See our [complete example](https://github.com/promptfoo/promptfoo/tree/main/examples/compare-deepseek-r1-vs-openai-o1) that benchmarks it against OpenAI's o1 model on the MMLU reasoning tasks.
 
 ## API Details
 
 - Base URL: `https://api.deepseek.com/v1`
 - OpenAI-compatible API format
 - Full [API documentation](https://platform.deepseek.com/docs)
+
+## See Also
+
+- [OpenAI Provider](/docs/providers/openai/) - Compatible configuration options
+- [Complete example](https://github.com/promptfoo/promptfoo/tree/main/examples/compare-deepseek-r1-vs-openai-o1) - Benchmark against OpenAI's o1 model

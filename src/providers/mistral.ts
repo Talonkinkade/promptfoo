@@ -1,14 +1,19 @@
 import { fetchWithCache, getCache, isCacheEnabled } from '../cache';
 import { getEnvString } from '../envars';
 import logger from '../logger';
+import { type GenAISpanContext, type GenAISpanResult, withGenAISpan } from '../tracing/genaiTracer';
+import { maybeLoadToolsFromExternalFile } from '../util';
+import { calculateCost, parseChatPrompt, REQUEST_TIMEOUT_MS } from './shared';
+
+import type { EnvVarKey } from '../envars';
+import type { EnvOverrides } from '../types/env';
 import type {
   ApiProvider,
+  CallApiContextParams,
   ProviderEmbeddingResponse,
   ProviderResponse,
   TokenUsage,
-} from '../types';
-import type { EnvOverrides } from '../types/env';
-import { calculateCost, REQUEST_TIMEOUT_MS, parseChatPrompt } from './shared';
+} from '../types/index';
 
 const MISTRAL_CHAT_MODELS = [
   ...['open-mistral-7b', 'mistral-tiny', 'mistral-tiny-2312'].map((id) => ({
@@ -86,6 +91,44 @@ const MISTRAL_CHAT_MODELS = [
       output: 6 / 1000000,
     },
   })),
+  // New Magistral models - reasoning models announced June 2025
+  {
+    id: 'magistral-small-2506',
+    cost: {
+      input: 0.5 / 1000000,
+      output: 1.5 / 1000000,
+    },
+  },
+  {
+    id: 'magistral-medium-2506',
+    cost: {
+      input: 2 / 1000000,
+      output: 5 / 1000000,
+    },
+  },
+  // Also support latest aliases
+  {
+    id: 'magistral-small-latest',
+    cost: {
+      input: 0.5 / 1000000,
+      output: 1.5 / 1000000,
+    },
+  },
+  {
+    id: 'magistral-medium-latest',
+    cost: {
+      input: 2 / 1000000,
+      output: 5 / 1000000,
+    },
+  },
+  // Multimodal model
+  {
+    id: 'pixtral-12b',
+    cost: {
+      input: 0.15 / 1000000,
+      output: 0.15 / 1000000,
+    },
+  },
 ];
 
 const MISTRAL_EMBEDDING_MODELS = [
@@ -103,6 +146,14 @@ interface MistralChatCompletionOptions {
   apiKeyEnvar?: string;
   apiHost?: string;
   apiBaseUrl?: string;
+  tools?: unknown;
+  tool_choice?:
+    | 'none'
+    | 'auto'
+    | 'any'
+    | 'required'
+    | { type: 'function'; function?: { name: string } };
+  parallel_tool_calls?: boolean;
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
@@ -115,12 +166,13 @@ interface MistralChatCompletionOptions {
 function getTokenUsage(data: any, cached: boolean): Partial<TokenUsage> {
   if (data.usage) {
     if (cached) {
-      return { cached: data.usage.total_tokens, total: data.usage.total_tokens };
+      return { cached: data.usage.total_tokens, total: data.usage.total_tokens, numRequests: 1 };
     } else {
       return {
         total: data.usage.total_tokens,
         prompt: data.usage.prompt_tokens || 0,
         completion: data.usage.completion_tokens || 0,
+        numRequests: 1,
       };
     }
   }
@@ -188,20 +240,70 @@ export class MistralChatCompletionProvider implements ApiProvider {
     );
   }
 
+  requiresApiKey(): boolean {
+    return true;
+  }
+
   getApiKey(): string | undefined {
     logger.debug(`Mistral apiKeyenvar: ${this.config.apiKeyEnvar}`);
-    return (
-      this.config.apiKey ||
+    const apiKeyCandidate =
+      this.config?.apiKey ||
       (this.config?.apiKeyEnvar
-        ? process.env[this.config.apiKeyEnvar] ||
+        ? getEnvString(this.config.apiKeyEnvar as EnvVarKey) ||
           this.env?.[this.config.apiKeyEnvar as keyof EnvOverrides]
         : undefined) ||
       this.env?.MISTRAL_API_KEY ||
-      getEnvString('MISTRAL_API_KEY')
+      getEnvString('MISTRAL_API_KEY');
+    return apiKeyCandidate;
+  }
+
+  async callApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
+    // Merge configs from the provider and the prompt
+    const config = {
+      ...this.config,
+      ...context?.prompt?.config,
+    };
+
+    // Set up tracing context
+    const spanContext: GenAISpanContext = {
+      system: 'mistral',
+      operationName: 'chat',
+      model: this.modelName,
+      providerId: this.id(),
+      temperature: config?.temperature,
+      topP: config?.top_p,
+      maxTokens: config?.max_tokens,
+      testIndex: context?.test?.vars?.__testIdx as number | undefined,
+      promptLabel: context?.prompt?.label,
+      // W3C Trace Context for linking to evaluation trace
+      traceparent: context?.traceparent,
+    };
+
+    // Result extractor to set response attributes on the span
+    const resultExtractor = (response: ProviderResponse): GenAISpanResult => {
+      const result: GenAISpanResult = {};
+      if (response.tokenUsage) {
+        result.tokenUsage = {
+          prompt: response.tokenUsage.prompt,
+          completion: response.tokenUsage.completion,
+          total: response.tokenUsage.total,
+        };
+      }
+      return result;
+    };
+
+    return withGenAISpan(
+      spanContext,
+      () => this.callApiInternal(prompt, context, config),
+      resultExtractor,
     );
   }
 
-  async callApi(prompt: string): Promise<ProviderResponse> {
+  private async callApiInternal(
+    prompt: string,
+    context?: CallApiContextParams,
+    config: MistralChatCompletionOptions = {},
+  ): Promise<ProviderResponse> {
     if (!this.getApiKey()) {
       throw new Error(
         'Mistral API key is not set. Set the MISTRAL_API_KEY environment variable or add `apiKey` or `apiKeyEnvar` to the provider config.',
@@ -209,16 +311,27 @@ export class MistralChatCompletionProvider implements ApiProvider {
     }
 
     const messages = parseChatPrompt(prompt, [{ role: 'user', content: prompt }]);
+    const loadedTools = config.tools
+      ? await maybeLoadToolsFromExternalFile(config.tools, context?.vars)
+      : undefined;
+    const hasTools = Array.isArray(loadedTools)
+      ? loadedTools.length > 0
+      : loadedTools !== undefined;
 
     const params = {
       model: this.modelName,
       messages,
-      temperature: this.config?.temperature,
-      top_p: this.config?.top_p || 1,
-      max_tokens: this.config?.max_tokens || 1024,
-      safe_prompt: this.config?.safe_prompt || false,
-      random_seed: this.config?.random_seed || null,
-      ...(this.config.response_format ? { response_format: this.config.response_format } : {}),
+      temperature: config?.temperature,
+      top_p: config?.top_p ?? 1,
+      max_tokens: config?.max_tokens ?? 1024,
+      safe_prompt: config?.safe_prompt ?? false,
+      random_seed: config?.random_seed ?? null,
+      ...(hasTools ? { tools: loadedTools } : {}),
+      ...(config?.tool_choice ? { tool_choice: config.tool_choice } : {}),
+      ...('parallel_tool_calls' in config
+        ? { parallel_tool_calls: Boolean(config.parallel_tool_calls) }
+        : {}),
+      ...(config?.response_format ? { response_format: config.response_format } : {}),
     };
 
     const cacheKey = `mistral:${JSON.stringify(params)}`;
@@ -230,6 +343,7 @@ export class MistralChatCompletionProvider implements ApiProvider {
           logger.debug(`Returning cached response for ${prompt}: ${JSON.stringify(cachedResult)}`);
           return {
             ...cachedResult,
+            cached: true,
             tokenUsage: {
               ...cachedResult.tokenUsage,
               cached: cachedResult.tokenUsage?.total,
@@ -240,7 +354,7 @@ export class MistralChatCompletionProvider implements ApiProvider {
     }
 
     const url = `${this.getApiUrl()}/chat/completions`;
-    logger.debug(`Mistral API request: ${url} ${JSON.stringify(params)}`);
+    logger.debug('Mistral API request', { url, params });
 
     let data,
       cached = false;
@@ -264,26 +378,36 @@ export class MistralChatCompletionProvider implements ApiProvider {
       };
     }
 
-    logger.debug(`Mistral API response: ${JSON.stringify(data)}`);
+    logger.debug('Mistral API response', { data });
 
     if (data.error) {
       return {
         error: `API call error: ${data.error}`,
       };
     }
-    if (!data.choices || !data.choices[0] || !data.choices[0].message.content) {
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       return {
         error: `Malformed response data: ${JSON.stringify(data)}`,
       };
     }
 
+    const message = data.choices[0].message;
+    let output: string | object;
+    if (message.content && message.tool_calls?.length) {
+      output = message;
+    } else if (message.tool_calls?.length) {
+      output = message.tool_calls;
+    } else {
+      output = message.content;
+    }
+
     const result: ProviderResponse = {
-      output: data.choices[0].message.content,
+      output,
       tokenUsage: getTokenUsage(data, cached),
       cached,
       cost: calculateMistralCost(
         this.modelName,
-        this.config,
+        config,
         data.usage?.prompt_tokens,
         data.usage?.completion_tokens,
       ),
@@ -341,17 +465,21 @@ export class MistralEmbeddingProvider implements ApiProvider {
     );
   }
 
+  requiresApiKey(): boolean {
+    return true;
+  }
+
   getApiKey(): string | undefined {
     logger.debug(`Mistral apiKeyenvar: ${this.config.apiKeyEnvar}`);
-    return (
-      this.config.apiKey ||
+    const apiKeyCandidate =
+      this.config?.apiKey ||
       (this.config?.apiKeyEnvar
-        ? process.env[this.config.apiKeyEnvar] ||
+        ? getEnvString(this.config.apiKeyEnvar as EnvVarKey) ||
           this.env?.[this.config.apiKeyEnvar as keyof EnvOverrides]
         : undefined) ||
       this.env?.MISTRAL_API_KEY ||
-      getEnvString('MISTRAL_API_KEY')
-    );
+      getEnvString('MISTRAL_API_KEY');
+    return apiKeyCandidate;
   }
 
   async callApi(text: string): Promise<ProviderResponse> {
@@ -380,7 +508,6 @@ export class MistralEmbeddingProvider implements ApiProvider {
     };
 
     const url = `${this.getApiUrl()}/embeddings`;
-    logger.debug(`Mistral Embedding API request: ${url} ${JSON.stringify(body)}`);
 
     let data;
     let cached = false;
@@ -402,8 +529,6 @@ export class MistralEmbeddingProvider implements ApiProvider {
       logger.error(`API call error: ${err}`);
       throw err;
     }
-
-    logger.debug(`Mistral Embedding API response: ${JSON.stringify(data)}`);
 
     try {
       const embedding = data?.data?.[0]?.embedding;

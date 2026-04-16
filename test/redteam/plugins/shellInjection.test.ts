@@ -1,30 +1,55 @@
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  DEFAULT_EXAMPLES,
   ShellInjectionPlugin,
-  ShellInjectionGrader,
-  PLUGIN_ID,
 } from '../../../src/redteam/plugins/shellInjection';
-import type { ApiProvider } from '../../../src/types';
+import {
+  createMockProvider,
+  createProviderResponse,
+  type MockApiProvider,
+} from '../../factories/provider';
+
+import type { RedteamObjectConfig } from '../../../src/redteam/types';
 
 describe('ShellInjectionPlugin', () => {
-  let mockProvider: ApiProvider;
+  let mockProvider: MockApiProvider;
 
   beforeEach(() => {
-    mockProvider = {
-      id: 'test-provider',
-      callApi: jest.fn().mockResolvedValue({
+    mockProvider = createMockProvider({
+      response: createProviderResponse({
         output: 'Prompt: rm -rf /\nPrompt: cat /etc/passwd',
       }),
-    } as unknown as ApiProvider;
+    });
   });
 
   it('should generate template with default examples when no examples provided', async () => {
     const plugin = new ShellInjectionPlugin(mockProvider, 'test purpose', 'test_var');
     const template = await plugin['getTemplate']();
 
-    expect(template).toContain('System purpose: tech support bot');
-    expect(template).toContain('System purpose: customer service assistant');
-    expect(template).toContain('System purpose: e-commerce chatbot');
-    expect(template).toContain('System purpose: IT helpdesk assistant');
+    expect(template).toContain('AI code review assistant');
+    expect(template).toContain('developer productivity chatbot');
+    expect(template).toContain('CI/CD pipeline assistant');
+    expect(template).toContain('compliance audit assistant');
+  });
+
+  it('should generate template with custom examples', async () => {
+    const customConfig = {
+      examples: [
+        'System purpose: Custom Bot 1\nPrompt: Custom Command 1',
+        'System purpose: Custom Bot 2\nPrompt: Custom Command 2',
+      ],
+    } as RedteamObjectConfig;
+
+    const plugin = new ShellInjectionPlugin(mockProvider, 'test purpose', 'test_var', customConfig);
+    const template = await plugin['getTemplate']();
+
+    expect(template).toContain('Context-specific examples:');
+    expect(template).toContain('Examples targeting security boundary violations:');
+    expect(template).toContain('{{ example | trim }}');
+    expect(template).not.toContain('Custom Bot 1');
+    expect(template).not.toContain('Custom Command 1');
+    expect(template).not.toContain('Custom Bot 2');
+    expect(template).not.toContain('Custom Command 2');
   });
 
   it('should return correct assertions for a prompt', () => {
@@ -33,7 +58,7 @@ describe('ShellInjectionPlugin', () => {
 
     expect(assertions).toHaveLength(1);
     expect(assertions[0]).toEqual({
-      type: PLUGIN_ID,
+      type: 'promptfoo:redteam:shell-injection',
       metric: 'ShellInjection',
     });
   });
@@ -45,31 +70,58 @@ describe('ShellInjectionPlugin', () => {
     expect(tests).toHaveLength(2);
     tests.forEach((test) => {
       expect(test.assert).toHaveLength(1);
-      expect(test.assert?.[0].type).toBe(PLUGIN_ID);
       expect(test.assert?.[0].type).toBe('promptfoo:redteam:shell-injection');
+      expect(test.assert?.[0].metric).toBe('ShellInjection');
     });
   });
-});
 
-describe('ShellInjectionGrader', () => {
-  let grader: ShellInjectionGrader;
+  it('should handle empty examples config', async () => {
+    const emptyConfig = { examples: [] } as any as RedteamObjectConfig;
+    const plugin = new ShellInjectionPlugin(mockProvider, 'test purpose', 'test_var', emptyConfig);
+    const template = await plugin['getTemplate']();
 
-  beforeEach(() => {
-    grader = new ShellInjectionGrader();
+    expect(template).toContain('Examples targeting security boundary violations:');
+    expect(template).toContain(DEFAULT_EXAMPLES);
   });
 
-  it('should have correct ID', () => {
-    expect(grader.id).toBe(PLUGIN_ID);
+  it('should handle undefined examples config', async () => {
+    const plugin = new ShellInjectionPlugin(mockProvider, 'test purpose', 'test_var', undefined);
+    const template = await plugin['getTemplate']();
+
+    expect(template).toContain('Examples targeting security boundary violations:');
+    expect(template).toContain(DEFAULT_EXAMPLES);
   });
 
-  it('should have non-empty rubric', () => {
-    expect(grader.rubric).toBeTruthy();
-    expect(typeof grader.rubric).toBe('string');
+  it('should handle malformed examples config', async () => {
+    const malformedConfig = {
+      examples: [
+        {
+          purpose: 'Malformed',
+          content: 'Some invalid content',
+        } as any,
+      ],
+    } as any as RedteamObjectConfig;
+
+    const plugin = new ShellInjectionPlugin(
+      mockProvider,
+      'test purpose',
+      'test_var',
+      malformedConfig,
+    );
+    const template = await plugin['getTemplate']();
+
+    expect(template).toContain('Examples targeting security boundary violations:');
+    expect(template).toContain(DEFAULT_EXAMPLES);
   });
 
-  it('should include key evaluation criteria in rubric', () => {
-    expect(grader.rubric).toContain('The output should not execute');
-    expect(grader.rubric).toContain('Security warnings');
-    expect(grader.rubric).toContain('Input validation errors');
+  it('should expose DEFAULT_EXAMPLES as a string containing all new examples', () => {
+    expect(DEFAULT_EXAMPLES).toContain('AI code review assistant for development teams');
+    expect(DEFAULT_EXAMPLES).toContain('developer productivity chatbot');
+    expect(DEFAULT_EXAMPLES).toContain('CI/CD pipeline assistant');
+    expect(DEFAULT_EXAMPLES).toContain('compliance audit assistant');
+    expect(DEFAULT_EXAMPLES).toContain('document management chatbot');
+    expect(DEFAULT_EXAMPLES).toContain('internal RAG log assistant chatbot');
+    expect(DEFAULT_EXAMPLES).toContain('QA automation assistant');
+    expect(DEFAULT_EXAMPLES).toContain('knowledge base assistant for technical documentation');
   });
 });

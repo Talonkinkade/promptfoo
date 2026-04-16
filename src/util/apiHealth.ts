@@ -1,8 +1,9 @@
-import { fetchWithTimeout } from '../fetch';
+import { getEnvString } from '../envars';
 import { CloudConfig } from '../globalConfig/cloud';
 import logger from '../logger';
+import { fetchWithTimeout } from './fetch/index';
 
-export interface HealthResponse {
+interface HealthResponse {
   status: string;
   message: string;
 }
@@ -18,12 +19,12 @@ export async function checkRemoteHealth(url: string): Promise<HealthResponse> {
       url,
       // Log environment variables that might affect network requests
       env: {
-        httpProxy: process.env.HTTP_PROXY || process.env.http_proxy,
-        httpsProxy: process.env.HTTPS_PROXY || process.env.https_proxy,
-        allProxy: process.env.ALL_PROXY || process.env.all_proxy,
-        noProxy: process.env.NO_PROXY || process.env.no_proxy,
-        nodeExtra: process.env.NODE_EXTRA_CA_CERTS,
-        nodeTls: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
+        httpProxy: getEnvString('HTTP_PROXY') || getEnvString('http_proxy'),
+        httpsProxy: getEnvString('HTTPS_PROXY') || getEnvString('https_proxy'),
+        allProxy: getEnvString('ALL_PROXY') || getEnvString('all_proxy'),
+        noProxy: getEnvString('NO_PROXY') || getEnvString('no_proxy'),
+        nodeExtra: getEnvString('NODE_EXTRA_CA_CERTS'),
+        nodeTls: getEnvString('NODE_TLS_REJECT_UNAUTHORIZED'),
       },
     })}`,
   );
@@ -35,15 +36,6 @@ export async function checkRemoteHealth(url: string): Promise<HealthResponse> {
         'Content-Type': 'application/json',
       },
     };
-
-    logger.debug(
-      `[CheckRemoteHealth] Making fetch request: ${JSON.stringify({
-        url,
-        options: requestOptions,
-        timeout: 5000,
-        nodeVersion: process.version,
-      })}`,
-    );
 
     const response = await fetchWithTimeout(url, requestOptions, 5000);
 
@@ -62,7 +54,6 @@ export async function checkRemoteHealth(url: string): Promise<HealthResponse> {
     }
 
     const data = await response.json();
-    logger.debug(`[CheckRemoteHealth] API health check response: ${JSON.stringify({ data })}`);
 
     if (data.status === 'OK') {
       return {
@@ -88,8 +79,22 @@ export async function checkRemoteHealth(url: string): Promise<HealthResponse> {
     // Type guard for Error objects
     const error = err instanceof Error ? err : new Error(String(err));
 
-    // If it's a timeout error, return a softer message
-    if (error.name === 'TimeoutError') {
+    const errorCause = (error as { cause?: unknown }).cause;
+    if (
+      typeof errorCause === 'object' &&
+      errorCause !== null &&
+      'code' in errorCause &&
+      (errorCause as { code?: string }).code === 'ECONNREFUSED'
+    ) {
+      return {
+        status: 'ERROR',
+        message: 'API is not reachable',
+      };
+    }
+
+    // If it's a timeout error, proceed anyway - a slow health check
+    // doesn't necessarily mean the generation endpoint is broken.
+    if (error.message.includes('timed out')) {
       return {
         status: 'OK',
         message: 'API health check timed out, proceeding anyway',

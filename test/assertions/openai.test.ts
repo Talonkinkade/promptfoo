@@ -1,24 +1,45 @@
 import fs from 'fs';
-import path from 'path';
-import { runAssertion } from '../../src/assertions';
-import {
-  handleIsValidOpenAiToolsCall,
-  handleIsValidOpenAiFunctionCall,
-} from '../../src/assertions/openai';
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { handleIsValidFunctionCall } from '../../src/assertions/functionToolCall';
+import { runAssertion } from '../../src/assertions/index';
+import { handleIsValidOpenAiToolsCall } from '../../src/assertions/openai';
 import { OpenAiChatCompletionProvider } from '../../src/providers/openai/chat';
+import { validateFunctionCall } from '../../src/providers/openai/util';
+import { createMockProvider } from '../factories/provider';
+
+import type { OpenAiTool } from '../../src/providers/openai/util';
 import type {
-  Assertion,
   ApiProvider,
+  Assertion,
   AssertionValueFunctionContext,
   AtomicTestCase,
   GradingResult,
-} from '../../src/types';
+} from '../../src/types/index';
 
-jest.mock('fs');
-jest.mock('path');
+// Create hoisted mocks for stable references
+const mocks = vi.hoisted(() => ({
+  mockPathResolve: vi.fn(),
+  mockMaybeLoadToolsFromExternalFile: vi.fn(),
+}));
 
-const mockedFs = jest.mocked(fs);
-const mockedPath = jest.mocked(path);
+vi.mock('fs');
+vi.mock('path', async () => {
+  const actual = await vi.importActual<typeof import('path')>('path');
+  return {
+    ...actual,
+    resolve: mocks.mockPathResolve,
+  };
+});
+vi.mock('../../src/util', async () => {
+  const actual = await vi.importActual('../../src/util');
+  return {
+    ...actual,
+    maybeLoadToolsFromExternalFile: mocks.mockMaybeLoadToolsFromExternalFile,
+  };
+});
+
+const mockedFs = vi.mocked(fs);
 
 const toolsAssertion: Assertion = {
   type: 'is-valid-openai-tools-call',
@@ -28,8 +49,7 @@ const functionAssertion: Assertion = {
   type: 'is-valid-openai-function-call',
 };
 
-const mockProvider = {
-  id: () => 'test-provider',
+const mockProvider = new OpenAiChatCompletionProvider('test-provider', {
   config: {
     tools: [
       {
@@ -61,8 +81,7 @@ const mockProvider = {
       },
     ],
   },
-  callApi: async () => ({ output: '' }),
-} as ApiProvider;
+});
 
 const mockContext: AssertionValueFunctionContext = {
   prompt: '',
@@ -75,9 +94,10 @@ const mockContext: AssertionValueFunctionContext = {
 
 describe('OpenAI assertions', () => {
   beforeEach(() => {
-    jest.resetAllMocks();
-    mockedPath.resolve.mockImplementation((...args) => args[args.length - 1]);
+    vi.resetAllMocks();
+    mocks.mockPathResolve.mockImplementation((...args: string[]) => args[args.length - 1]);
     mockedFs.existsSync.mockReturnValue(true);
+    mocks.mockMaybeLoadToolsFromExternalFile.mockImplementation((input) => input);
   });
 
   describe('is-valid-openai-function-call assertion', () => {
@@ -193,20 +213,20 @@ describe('OpenAI assertions', () => {
     });
   });
 
-  describe('handleIsValidOpenAiFunctionCall', () => {
-    it('should pass when function call matches schema', () => {
+  describe('handleIsValidFunctionCall', () => {
+    it('should pass when function call matches schema', async () => {
       const functionOutput = {
         name: 'getCurrentTemperature',
         arguments: '{"location": "San Francisco, CA", "unit": "Fahrenheit"}',
       };
 
-      const result = handleIsValidOpenAiFunctionCall({
+      const result = handleIsValidFunctionCall({
         assertion: functionAssertion,
         output: functionOutput,
         provider: mockProvider,
         test: { vars: {} },
         baseType: functionAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(functionOutput),
         providerResponse: { output: functionOutput },
@@ -220,7 +240,7 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    it('should load functions from external file', () => {
+    it('should load functions from external file', async () => {
       const functionOutput = {
         name: 'getCurrentTemperature',
         arguments: '{"location": "San Francisco, CA", "unit": "Fahrenheit"}',
@@ -241,47 +261,29 @@ describe('OpenAI assertions', () => {
 
       mockedFs.readFileSync.mockReturnValue(mockYamlContent);
 
-      const fileProvider = {
-        ...mockProvider,
-        config: {
-          functions: 'file://./test/fixtures/weather_functions.yaml',
-        },
-      };
+      const fileProvider = createMockProvider({
+        config: { functions: 'file://./test/fixtures/weather_functions.yaml' },
+        response: { output: '' },
+      }) as ApiProvider;
 
-      const result = handleIsValidOpenAiFunctionCall({
-        assertion: functionAssertion,
-        output: functionOutput,
-        provider: fileProvider,
-        test: { vars: {} },
-        baseType: functionAssertion.type,
-        context: mockContext,
-        inverse: false,
-        outputString: JSON.stringify(functionOutput),
-        providerResponse: { output: functionOutput },
-      });
+      expect(() => {
+        validateFunctionCall(functionOutput, fileProvider.config.functions, {});
+      }).not.toThrow();
 
-      expect(result).toEqual({
-        pass: true,
-        score: 1,
-        reason: 'Assertion passed',
-        assertion: functionAssertion,
-      });
-
-      expect(mockedFs.existsSync).toHaveBeenCalledWith('./test/fixtures/weather_functions.yaml');
+      // Note: existsSync is no longer called - we use try/catch on readFileSync instead (TOCTOU fix)
       expect(mockedFs.readFileSync).toHaveBeenCalledWith(
         './test/fixtures/weather_functions.yaml',
         'utf8',
       );
     });
 
-    it('should render variables in function definitions', () => {
+    it('should render variables in function definitions', async () => {
       const functionOutput = {
         name: 'getCurrentTemperature',
         arguments: '{"location": "San Francisco, CA", "unit": "custom_unit"}',
       };
 
-      const varProvider = {
-        ...mockProvider,
+      const varProvider = new OpenAiChatCompletionProvider('test-provider', {
         config: {
           functions: [
             {
@@ -297,15 +299,15 @@ describe('OpenAI assertions', () => {
             },
           ],
         },
-      };
+      });
 
-      const result = handleIsValidOpenAiFunctionCall({
+      const result = handleIsValidFunctionCall({
         assertion: functionAssertion,
         output: functionOutput,
         provider: varProvider,
         test: { vars: { unit: 'custom_unit' } },
         baseType: functionAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(functionOutput),
         providerResponse: { output: functionOutput },
@@ -319,24 +321,23 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    it('should fail when functions are not defined', () => {
+    it('should fail when functions are not defined', async () => {
       const functionOutput = {
         name: 'getCurrentTemperature',
         arguments: '{"location": "San Francisco, CA"}',
       };
 
-      const emptyProvider = {
-        ...mockProvider,
+      const emptyProvider = new OpenAiChatCompletionProvider('test-provider', {
         config: {},
-      };
+      });
 
-      const result = handleIsValidOpenAiFunctionCall({
+      const result = handleIsValidFunctionCall({
         assertion: functionAssertion,
         output: functionOutput,
         provider: emptyProvider,
         test: { vars: {} },
         baseType: functionAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(functionOutput),
         providerResponse: { output: functionOutput },
@@ -350,16 +351,16 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    it('should fail when function output is not an object', () => {
+    it('should fail when function output is not an object', async () => {
       const functionOutput = 'not an object';
 
-      const result = handleIsValidOpenAiFunctionCall({
+      const result = handleIsValidFunctionCall({
         assertion: functionAssertion,
         output: functionOutput,
         provider: mockProvider,
         test: { vars: {} },
         baseType: functionAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(functionOutput),
         providerResponse: { output: functionOutput },
@@ -373,19 +374,19 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    it('should fail when function call does not match schema', () => {
+    it('should fail when function call does not match schema', async () => {
       const functionOutput = {
         name: 'getCurrentTemperature',
         arguments: '{"location": "San Francisco, CA"}', // missing required 'unit'
       };
 
-      const result = handleIsValidOpenAiFunctionCall({
+      const result = handleIsValidFunctionCall({
         assertion: functionAssertion,
         output: functionOutput,
         provider: mockProvider,
         test: { vars: {} },
         baseType: functionAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(functionOutput),
         providerResponse: { output: functionOutput },
@@ -604,8 +605,7 @@ describe('OpenAI assertions', () => {
   });
 
   describe('handleIsValidOpenAiToolsCall', () => {
-    // Basic validation tests
-    it('should pass when tool calls match schema', () => {
+    it('should pass when tool calls match schema', async () => {
       const toolsOutput = [
         {
           id: 'call_123',
@@ -617,13 +617,13 @@ describe('OpenAI assertions', () => {
         },
       ];
 
-      const result = handleIsValidOpenAiToolsCall({
+      const result = await handleIsValidOpenAiToolsCall({
         assertion: toolsAssertion,
         output: toolsOutput,
         provider: mockProvider,
         test: { vars: {} },
         baseType: toolsAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(toolsOutput),
         providerResponse: { output: toolsOutput },
@@ -637,8 +637,7 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    // External file loading tests
-    it('should load tools from external file', () => {
+    it('should load tools from external file', async () => {
       const toolsOutput = [
         {
           id: 'call_123',
@@ -650,37 +649,41 @@ describe('OpenAI assertions', () => {
         },
       ];
 
-      const mockYamlContent = `
-- type: function
-  function:
-    name: getCurrentTemperature
-    parameters:
-      type: object
-      properties:
-        location:
-          type: string
-        unit:
-          type: string
-          enum: [Celsius, Fahrenheit]
-      required: [location, unit]
-`;
-
-      mockedFs.readFileSync.mockReturnValue(mockYamlContent);
-
-      const fileProvider = {
-        ...mockProvider,
-        config: {
-          tools: 'file://./test/fixtures/weather_tools.yaml',
+      // Define the array of tools that should be returned by the mock
+      const mockParsedTools = [
+        {
+          type: 'function',
+          function: {
+            name: 'getCurrentTemperature',
+            parameters: {
+              type: 'object',
+              properties: {
+                location: { type: 'string' },
+                unit: { type: 'string', enum: ['Celsius', 'Fahrenheit'] },
+              },
+              required: ['location', 'unit'],
+            },
+          },
         },
-      };
+      ];
 
-      const result = handleIsValidOpenAiToolsCall({
+      // Make sure the mock returns an array, not a string or object
+      mocks.mockMaybeLoadToolsFromExternalFile.mockResolvedValue(mockParsedTools);
+
+      const fileProvider = createMockProvider({
+        config: {
+          tools: 'file://./test/fixtures/weather_tools.json' as unknown as OpenAiTool[],
+        },
+        response: { output: '' },
+      }) as ApiProvider;
+
+      const result = await handleIsValidOpenAiToolsCall({
         assertion: toolsAssertion,
         output: toolsOutput,
         provider: fileProvider,
         test: { vars: {} },
         baseType: toolsAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(toolsOutput),
         providerResponse: { output: toolsOutput },
@@ -693,15 +696,14 @@ describe('OpenAI assertions', () => {
         assertion: toolsAssertion,
       });
 
-      expect(mockedFs.existsSync).toHaveBeenCalledWith('./test/fixtures/weather_tools.yaml');
-      expect(mockedFs.readFileSync).toHaveBeenCalledWith(
-        './test/fixtures/weather_tools.yaml',
-        'utf8',
+      // Verify mocks.mockMaybeLoadToolsFromExternalFile was called with the file path
+      expect(mocks.mockMaybeLoadToolsFromExternalFile).toHaveBeenCalledWith(
+        'file://./test/fixtures/weather_tools.json',
+        {},
       );
     });
 
-    // Variable rendering tests
-    it('should render variables in tool definitions', () => {
+    it('should render variables in tool definitions', async () => {
       const toolsOutput = [
         {
           id: 'call_123',
@@ -713,8 +715,7 @@ describe('OpenAI assertions', () => {
         },
       ];
 
-      const varProvider = {
-        ...mockProvider,
+      const varProvider = new OpenAiChatCompletionProvider('test-provider', {
         config: {
           tools: [
             {
@@ -733,15 +734,15 @@ describe('OpenAI assertions', () => {
             },
           ],
         },
-      };
+      });
 
-      const result = handleIsValidOpenAiToolsCall({
+      const result = await handleIsValidOpenAiToolsCall({
         assertion: toolsAssertion,
         output: toolsOutput,
         provider: varProvider,
         test: { vars: { unit: 'custom_unit' } },
         baseType: toolsAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(toolsOutput),
         providerResponse: { output: toolsOutput },
@@ -755,8 +756,7 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    // Error cases
-    it('should fail when tools are not defined', () => {
+    it('should fail when tools are not defined', async () => {
       const toolsOutput = [
         {
           id: 'call_123',
@@ -768,27 +768,30 @@ describe('OpenAI assertions', () => {
         },
       ];
 
-      const emptyProvider = {
-        ...mockProvider,
+      const emptyProvider = new OpenAiChatCompletionProvider('test-provider', {
         config: {},
-      };
+      });
 
-      expect(() =>
-        handleIsValidOpenAiToolsCall({
-          assertion: toolsAssertion,
-          output: toolsOutput,
-          provider: emptyProvider,
-          test: { vars: {} },
-          baseType: toolsAssertion.type,
-          context: mockContext,
-          inverse: false,
-          outputString: JSON.stringify(toolsOutput),
-          providerResponse: { output: toolsOutput },
-        }),
-      ).toThrow('Tools are expected to be an array of objects with a function property');
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: toolsOutput,
+        provider: emptyProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: JSON.stringify(toolsOutput),
+        providerResponse: { output: toolsOutput },
+      });
+
+      expect(result).toMatchObject({
+        pass: false,
+        score: 0,
+        reason: 'No tools configured in provider, but output contains tool calls',
+      });
     });
 
-    it('should fail when tool output is not an array', () => {
+    it('should fail when tool output is not an array', async () => {
       const toolsOutput = {
         id: 'call_123',
         type: 'function',
@@ -798,20 +801,19 @@ describe('OpenAI assertions', () => {
         },
       };
 
-      const emptyToolsProvider = {
-        ...mockProvider,
+      const emptyToolsProvider = new OpenAiChatCompletionProvider('test-provider', {
         config: {
           tools: [],
         },
-      };
+      });
 
-      const result = handleIsValidOpenAiToolsCall({
+      const result = await handleIsValidOpenAiToolsCall({
         assertion: toolsAssertion,
         output: toolsOutput,
         provider: emptyToolsProvider,
         test: { vars: {} },
         baseType: toolsAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(toolsOutput),
         providerResponse: { output: toolsOutput },
@@ -825,7 +827,7 @@ describe('OpenAI assertions', () => {
       });
     });
 
-    it('should fail when tool call does not match schema', () => {
+    it('should fail when tool call does not match schema', async () => {
       const toolsOutput = [
         {
           id: 'call_123',
@@ -837,13 +839,13 @@ describe('OpenAI assertions', () => {
         },
       ];
 
-      const result = handleIsValidOpenAiToolsCall({
+      const result = await handleIsValidOpenAiToolsCall({
         assertion: toolsAssertion,
         output: toolsOutput,
         provider: mockProvider,
         test: { vars: {} },
         baseType: toolsAssertion.type,
-        context: mockContext,
+        assertionValueContext: mockContext,
         inverse: false,
         outputString: JSON.stringify(toolsOutput),
         providerResponse: { output: toolsOutput },
@@ -853,6 +855,496 @@ describe('OpenAI assertions', () => {
         pass: false,
         score: 0,
         reason: expect.stringContaining('must have required property'),
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should use maybeLoadToolsFromExternalFile to process tools', async () => {
+      const toolOutput = {
+        tool_calls: [
+          {
+            type: 'function',
+            function: {
+              name: 'getCurrentTemperature',
+              arguments: '{"location": "San Francisco, CA", "unit": "Fahrenheit"}',
+            },
+          },
+        ],
+      };
+
+      const mockTools = [
+        {
+          type: 'function',
+          function: {
+            name: 'getCurrentTemperature',
+            parameters: {
+              type: 'object',
+              properties: {
+                location: { type: 'string' },
+                unit: { type: 'string', enum: ['Celsius', 'Fahrenheit'] },
+              },
+              required: ['location', 'unit'],
+            },
+          },
+        },
+      ];
+
+      // Set up the mock to return processed tools
+      mocks.mockMaybeLoadToolsFromExternalFile.mockResolvedValue(mockTools);
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: toolOutput,
+        provider: mockProvider,
+        test: { vars: { city: 'San Francisco, CA' } },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: JSON.stringify(toolOutput),
+        providerResponse: { output: toolOutput },
+      });
+
+      expect(mocks.mockMaybeLoadToolsFromExternalFile).toHaveBeenCalledWith(
+        mockProvider.config.tools,
+        {
+          city: 'San Francisco, CA',
+        },
+      );
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle external file references for tools', async () => {
+      const toolOutput = {
+        tool_calls: [
+          {
+            type: 'function',
+            function: {
+              name: 'getCurrentTemperature',
+              arguments: '{"location": "San Francisco, CA", "unit": "Fahrenheit"}',
+            },
+          },
+        ],
+      };
+
+      // Mock a provider with tools from a file reference
+      const fileProvider = new OpenAiChatCompletionProvider('test-provider', {
+        config: {
+          tools: 'file://./test/fixtures/weather_tools.json' as unknown as OpenAiTool[],
+        },
+      });
+
+      // Set up the mock to return processed tools from the external file
+      const mockToolsFromFile = [
+        {
+          type: 'function',
+          function: {
+            name: 'getCurrentTemperature',
+            parameters: {
+              type: 'object',
+              properties: {
+                location: { type: 'string' },
+                unit: { type: 'string', enum: ['Celsius', 'Fahrenheit'] },
+              },
+              required: ['location', 'unit'],
+            },
+          },
+        },
+      ];
+      mocks.mockMaybeLoadToolsFromExternalFile.mockResolvedValue(mockToolsFromFile);
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: toolOutput,
+        provider: fileProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: { ...mockContext, provider: fileProvider },
+        inverse: false,
+        outputString: JSON.stringify(toolOutput),
+        providerResponse: { output: toolOutput },
+      });
+
+      // Check that the function was called with the file path
+      expect(mocks.mockMaybeLoadToolsFromExternalFile).toHaveBeenCalledWith(
+        'file://./test/fixtures/weather_tools.json',
+        {},
+      );
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle variable substitution in tools', async () => {
+      const toolOutput = {
+        tool_calls: [
+          {
+            type: 'function',
+            function: {
+              name: 'getCurrentTemperature',
+              arguments: '{"location": "San Francisco, CA", "unit": "custom_unit"}',
+            },
+          },
+        ],
+      };
+
+      // Create a provider with tools that contain variable placeholders
+      const varProvider = new OpenAiChatCompletionProvider('test-provider', {
+        config: {
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'getCurrentTemperature',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    location: { type: 'string' },
+                    unit: { type: 'string', enum: ['{{unit}}'] },
+                  },
+                  required: ['location', 'unit'],
+                },
+              },
+            },
+          ],
+        },
+      });
+
+      // Set up the mock to return tools with variables resolved
+      const processedTools = [
+        {
+          type: 'function',
+          function: {
+            name: 'getCurrentTemperature',
+            parameters: {
+              type: 'object',
+              properties: {
+                location: { type: 'string' },
+                unit: { type: 'string', enum: ['custom_unit'] },
+              },
+              required: ['location', 'unit'],
+            },
+          },
+        },
+      ];
+      mocks.mockMaybeLoadToolsFromExternalFile.mockResolvedValue(processedTools);
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: toolOutput,
+        provider: varProvider,
+        test: { vars: { unit: 'custom_unit' } },
+        baseType: toolsAssertion.type,
+        assertionValueContext: { ...mockContext, provider: varProvider },
+        inverse: false,
+        outputString: JSON.stringify(toolOutput),
+        providerResponse: { output: toolOutput },
+      });
+
+      // Verify the function was called with variables
+      expect(mocks.mockMaybeLoadToolsFromExternalFile).toHaveBeenCalledWith(
+        varProvider.config.tools,
+        {
+          unit: 'custom_unit',
+        },
+      );
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion: toolsAssertion,
+      });
+    });
+  });
+
+  describe('handleIsValidOpenAiToolsCall with MCP support', () => {
+    it('should pass when MCP tool call succeeds', async () => {
+      const mcpOutput =
+        'MCP Tool Result (ask_question): React is a JavaScript library for building user interfaces.';
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'MCP tool call succeeded for ask_question',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should fail when MCP tool call has an error', async () => {
+      const mcpOutput = 'MCP Tool Error (ask_question): Repository not found';
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason: 'MCP tool call failed for ask_question: Repository not found',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle MCP tool result with complex tool name', async () => {
+      const mcpOutput =
+        'MCP Tool Result (read_wiki_structure): Successfully retrieved repository structure.';
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'MCP tool call succeeded for read_wiki_structure',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle MCP tool error with complex error message', async () => {
+      const mcpOutput =
+        'MCP Tool Error (stripe_payment): Authentication failed: Invalid API key provided';
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason:
+          'MCP tool call failed for stripe_payment: Authentication failed: Invalid API key provided',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle mixed MCP and regular content', async () => {
+      const mcpOutput = `
+        Here's what I found:
+        MCP Tool Result (ask_question): TypeScript is a programming language.
+        Based on this information, TypeScript adds static typing to JavaScript.
+      `;
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'MCP tool call succeeded for ask_question',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle multiple MCP tool results in output', async () => {
+      const mcpOutput = `
+        MCP Tool Result (ask_question): First result here.
+        MCP Tool Result (read_wiki_structure): Second result here.
+        Both tools executed successfully.
+      `;
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'MCP tool call succeeded for ask_question',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should prioritize MCP errors over successes', async () => {
+      const mcpOutput = `
+        MCP Tool Result (ask_question): First result here.
+        MCP Tool Error (read_wiki_structure): Failed to read structure.
+        Mixed results from tools.
+      `;
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason: 'MCP tool call failed for read_wiki_structure: Failed to read structure.',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle MCP tool error without tool name match', async () => {
+      const mcpOutput = 'MCP Tool Error: General error occurred';
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason: 'MCP tool call failed for unknown: unknown error',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle MCP tool result without tool name match', async () => {
+      const mcpOutput = 'MCP Tool Result: General success';
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: mcpOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: mcpOutput,
+        providerResponse: { output: mcpOutput },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'MCP tool call succeeded for unknown',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should fall back to traditional function tool validation when no MCP content', async () => {
+      const toolsOutput = [
+        {
+          id: 'call_123',
+          type: 'function',
+          function: {
+            name: 'getCurrentTemperature',
+            arguments: '{"location": "San Francisco, CA", "unit": "Fahrenheit"}',
+          },
+        },
+      ];
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: toolsOutput,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: JSON.stringify(toolsOutput),
+        providerResponse: { output: toolsOutput },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion: toolsAssertion,
+      });
+    });
+
+    it('should handle object output with MCP content', async () => {
+      const outputObject = {
+        content: 'MCP Tool Result (ask_question): React is a JavaScript library.',
+        metadata: { source: 'mcp' },
+      };
+
+      const result = await handleIsValidOpenAiToolsCall({
+        assertion: toolsAssertion,
+        output: outputObject,
+        provider: mockProvider,
+        test: { vars: {} },
+        baseType: toolsAssertion.type,
+        assertionValueContext: mockContext,
+        inverse: false,
+        outputString: JSON.stringify(outputObject),
+        providerResponse: { output: outputObject },
+      });
+
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'MCP tool call succeeded for ask_question',
         assertion: toolsAssertion,
       });
     });

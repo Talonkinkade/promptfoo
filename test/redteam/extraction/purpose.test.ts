@@ -1,19 +1,35 @@
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchWithCache } from '../../../src/cache';
 import { VERSION } from '../../../src/constants';
-import { extractSystemPurpose } from '../../../src/redteam/extraction/purpose';
+import { DEFAULT_PURPOSE, extractSystemPurpose } from '../../../src/redteam/extraction/purpose';
 import { getRemoteGenerationUrl } from '../../../src/redteam/remoteGeneration';
-import type { ApiProvider } from '../../../src/types';
+import {
+  createMockProvider,
+  createProviderResponse,
+  type MockApiProvider,
+} from '../../factories/provider';
 
-jest.mock('../../../src/cache', () => ({
-  fetchWithCache: jest.fn(),
+vi.mock('../../../src/logger', () => ({
+  default: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
 }));
-jest.mock('../../../src/redteam/remoteGeneration', () => ({
-  ...jest.requireActual('../../../src/redteam/remoteGeneration'),
-  getRemoteGenerationUrl: jest.fn().mockReturnValue('https://api.promptfoo.app/task'),
+vi.mock('../../../src/cache', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    fetchWithCache: vi.fn(),
+  };
+});
+vi.mock('../../../src/redteam/remoteGeneration', async () => ({
+  ...(await vi.importActual('../../../src/redteam/remoteGeneration')),
+  getRemoteGenerationUrl: vi.fn().mockReturnValue('https://api.promptfoo.app/api/v1/task'),
 }));
 
 describe('System Purpose Extractor', () => {
-  let provider: ApiProvider;
+  let provider: MockApiProvider;
   let originalEnv: NodeJS.ProcessEnv;
 
   beforeAll(() => {
@@ -23,14 +39,15 @@ describe('System Purpose Extractor', () => {
   beforeEach(() => {
     process.env = { ...originalEnv };
     delete process.env.PROMPTFOO_REMOTE_GENERATION_URL;
-    provider = {
-      callApi: jest
-        .fn()
-        .mockResolvedValue({ output: '<Purpose>Extracted system purpose</Purpose>' }),
-      id: jest.fn().mockReturnValue('test-provider'),
-    };
-    jest.clearAllMocks();
-    jest.mocked(getRemoteGenerationUrl).mockReturnValue('https://api.promptfoo.app/task');
+    provider = createMockProvider({
+      response: createProviderResponse({
+        output: '<Purpose>Extracted system purpose</Purpose>',
+      }),
+    });
+    vi.clearAllMocks();
+    vi.mocked(getRemoteGenerationUrl).mockImplementation(function () {
+      return 'https://api.promptfoo.app/api/v1/task';
+    });
   });
 
   afterEach(() => {
@@ -40,7 +57,7 @@ describe('System Purpose Extractor', () => {
   it('should use remote generation when enabled', async () => {
     process.env.OPENAI_API_KEY = undefined;
     process.env.PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION = 'false';
-    jest.mocked(fetchWithCache).mockResolvedValue({
+    vi.mocked(fetchWithCache).mockResolvedValue({
       data: { task: 'purpose', result: 'Remote extracted purpose' },
       status: 200,
       statusText: 'OK',
@@ -51,7 +68,7 @@ describe('System Purpose Extractor', () => {
 
     expect(result).toBe('Remote extracted purpose');
     expect(fetchWithCache).toHaveBeenCalledWith(
-      'https://api.promptfoo.app/task',
+      'https://api.promptfoo.app/api/v1/task',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -70,7 +87,7 @@ describe('System Purpose Extractor', () => {
     process.env.PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION = 'false';
     const originalOpenaiKey = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = undefined;
-    jest.mocked(fetchWithCache).mockRejectedValue(new Error('Remote generation failed'));
+    vi.mocked(fetchWithCache).mockRejectedValue(new Error('Remote generation failed'));
     const result = await extractSystemPurpose(provider, ['prompt1', 'prompt2']);
 
     expect(result).toBe('');
@@ -90,10 +107,20 @@ describe('System Purpose Extractor', () => {
 
   it('should extract system purpose when returned without xml tags', async () => {
     process.env.PROMPTFOO_DISABLE_REDTEAM_REMOTE_GENERATION = 'true';
-    jest.mocked(provider.callApi).mockResolvedValue({ output: 'Extracted system purpose' });
+    vi.mocked(provider.callApi).mockResolvedValue({ output: 'Extracted system purpose' });
 
     const result = await extractSystemPurpose(provider, ['prompt1', 'prompt2']);
 
     expect(result).toBe('Extracted system purpose');
+  });
+
+  it('should return default message for empty prompts array', async () => {
+    const result = await extractSystemPurpose(provider, []);
+    expect(result).toBe(DEFAULT_PURPOSE);
+  });
+
+  it('should return default message for prompts array with only template variable', async () => {
+    const result = await extractSystemPurpose(provider, ['{{prompt}}']);
+    expect(result).toBe(DEFAULT_PURPOSE);
   });
 });

@@ -1,7 +1,10 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchWithCache } from '../src/cache';
-import guardrails from '../src/guardrails';
+import guardrails, { type AdaptiveRequest } from '../src/guardrails';
 
-jest.mock('../src/cache');
+vi.mock('../src/cache', () => ({
+  fetchWithCache: vi.fn(),
+}));
 
 describe('guardrails', () => {
   const mockFetchResponse = {
@@ -25,8 +28,8 @@ describe('guardrails', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.mocked(fetchWithCache).mockResolvedValue(mockFetchResponse);
+    vi.clearAllMocks();
+    vi.mocked(fetchWithCache).mockResolvedValue(mockFetchResponse);
   });
 
   describe('guard', () => {
@@ -55,13 +58,13 @@ describe('guardrails', () => {
 
     it('should handle API errors', async () => {
       const errorMessage = 'API Error';
-      jest.mocked(fetchWithCache).mockRejectedValue(new Error(errorMessage));
+      vi.mocked(fetchWithCache).mockRejectedValue(new Error(errorMessage));
 
       await expect(guardrails.guard('test input')).rejects.toThrow(errorMessage);
     });
 
     it('should handle empty API response', async () => {
-      jest.mocked(fetchWithCache).mockResolvedValue({
+      vi.mocked(fetchWithCache).mockResolvedValue({
         data: null,
         cached: false,
         status: 200,
@@ -104,7 +107,7 @@ describe('guardrails', () => {
     };
 
     beforeEach(() => {
-      jest.mocked(fetchWithCache).mockResolvedValue(mockPiiResponse);
+      vi.mocked(fetchWithCache).mockResolvedValue(mockPiiResponse);
     });
 
     it('should make a request to the pii endpoint', async () => {
@@ -133,7 +136,7 @@ describe('guardrails', () => {
 
     it('should handle API errors', async () => {
       const errorMessage = 'API Error';
-      jest.mocked(fetchWithCache).mockRejectedValue(new Error(errorMessage));
+      vi.mocked(fetchWithCache).mockRejectedValue(new Error(errorMessage));
 
       await expect(guardrails.pii('test input')).rejects.toThrow(errorMessage);
     });
@@ -163,7 +166,7 @@ describe('guardrails', () => {
     };
 
     beforeEach(() => {
-      jest.mocked(fetchWithCache).mockResolvedValue(mockHarmResponse);
+      vi.mocked(fetchWithCache).mockResolvedValue(mockHarmResponse);
     });
 
     it('should make a request to the harm endpoint', async () => {
@@ -193,7 +196,7 @@ describe('guardrails', () => {
 
     it('should handle API errors', async () => {
       const errorMessage = 'API Error';
-      jest.mocked(fetchWithCache).mockRejectedValue(new Error(errorMessage));
+      vi.mocked(fetchWithCache).mockRejectedValue(new Error(errorMessage));
 
       await expect(guardrails.harm('test input')).rejects.toThrow(errorMessage);
     });
@@ -212,7 +215,7 @@ describe('guardrails', () => {
     });
 
     it('should have correct PII result structure with payload', async () => {
-      jest.mocked(fetchWithCache).mockResolvedValue({
+      vi.mocked(fetchWithCache).mockResolvedValue({
         data: {
           model: 'test-model',
           results: [
@@ -259,6 +262,88 @@ describe('guardrails', () => {
           pii: expect.any(String),
         }),
       );
+    });
+  });
+
+  describe('adaptive function', () => {
+    it('should call fetchWithCache with correct parameters', async () => {
+      const mockResponse = {
+        data: {
+          model: 'promptfoo-adaptive-prompt',
+          adaptedPrompt: 'Adapted test input',
+          modifications: [
+            {
+              type: 'substitution',
+              reason: 'Policy compliance',
+              original: 'test input',
+              modified: 'Adapted test input',
+            },
+          ],
+        },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      };
+      vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+      const request: AdaptiveRequest = {
+        prompt: 'test input',
+        policies: ['No harmful content'],
+      };
+
+      const result = await guardrails.adaptive(request);
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        'https://api.promptfoo.app/v1/adaptive',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: 'test input',
+            policies: ['No harmful content'],
+          }),
+        },
+        undefined,
+        'json',
+      );
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('should handle missing policies parameter', async () => {
+      const mockResponse = {
+        data: {
+          model: 'promptfoo-adaptive-prompt',
+          adaptedPrompt: 'Adapted test input',
+          modifications: [],
+        },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      };
+      vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+      const request: AdaptiveRequest = {
+        prompt: 'test input',
+      };
+
+      const result = await guardrails.adaptive(request);
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        'https://api.promptfoo.app/v1/adaptive',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: 'test input',
+            policies: [],
+          }),
+        },
+        undefined,
+        'json',
+      );
+      expect(result).toEqual(mockResponse.data);
     });
   });
 });

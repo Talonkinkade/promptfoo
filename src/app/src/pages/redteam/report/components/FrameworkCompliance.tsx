@@ -1,40 +1,49 @@
-import React, { useState } from 'react';
-import CancelIcon from '@mui/icons-material/Cancel';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Grid from '@mui/material/Grid';
-import IconButton from '@mui/material/IconButton';
-import LinearProgress from '@mui/material/LinearProgress';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import ListItemText from '@mui/material/ListItemText';
-import Typography from '@mui/material/Typography';
+import React from 'react';
+
+import { Card, CardContent } from '@app/components/ui/card';
+import { cn } from '@app/lib/utils';
+import { formatASRForDisplay } from '@app/utils/redteam';
 import {
   ALIASED_PLUGIN_MAPPINGS,
-  categoryAliases,
-  displayNameOverrides,
-  FRAMEWORK_NAMES,
   FRAMEWORK_COMPLIANCE_IDS,
+  type FrameworkComplianceId,
+  riskCategorySeverityMap,
+  Severity,
 } from '@promptfoo/redteam/constants';
+import { calculateAttackSuccessRate } from '@promptfoo/redteam/metrics';
+import FrameworkCard from './FrameworkCard';
+import {
+  categorizePlugins,
+  expandPluginCollections,
+  type TestResultStats,
+} from './FrameworkComplianceUtils';
+import CSVExporter from './FrameworkCsvExporter';
 import { useReportStore } from './store';
-import './FrameworkCompliance.css';
+import type { UnifiedConfig } from '@promptfoo/types';
 
 interface FrameworkComplianceProps {
-  categoryStats: Record<string, { pass: number; total: number; passWithFilter: number }>;
-  strategyStats: Record<string, { pass: number; total: number }>;
+  evalId: string;
+  categoryStats: Record<string, Required<TestResultStats>>;
+  config?: Partial<UnifiedConfig>;
 }
 
-const FrameworkCompliance: React.FC<FrameworkComplianceProps> = ({
-  categoryStats,
-  strategyStats,
-}) => {
-  const { pluginPassRateThreshold, showComplianceSection } = useReportStore();
-  const [expandedFrameworks, setExpandedFrameworks] = useState<Record<string, boolean>>({});
+const FrameworkCompliance = ({ evalId, categoryStats, config }: FrameworkComplianceProps) => {
+  const { pluginPassRateThreshold, showUntestedPlugins } = useReportStore();
+
+  // Filter frameworks based on config
+  const frameworksToShow = React.useMemo(() => {
+    const configuredFrameworks = config?.redteam?.frameworks;
+
+    // If not configured or empty, show all frameworks (default behavior)
+    if (!configuredFrameworks || configuredFrameworks.length === 0) {
+      return FRAMEWORK_COMPLIANCE_IDS;
+    }
+
+    // Filter to only show configured frameworks
+    return FRAMEWORK_COMPLIANCE_IDS.filter((id) =>
+      configuredFrameworks.includes(id as FrameworkComplianceId),
+    );
+  }, [config?.redteam?.frameworks]);
 
   const getNonCompliantPlugins = React.useCallback(
     (framework: string) => {
@@ -43,164 +52,179 @@ const FrameworkCompliance: React.FC<FrameworkComplianceProps> = ({
         return [];
       }
 
-      return Array.from(
-        new Set(
-          Object.entries(mappings).flatMap(([_, { plugins, strategies }]) => {
-            const nonCompliantItems = [...plugins, ...strategies].filter((item) => {
-              const stats = categoryStats[item] || strategyStats[item];
-              return stats && stats.total > 0 && stats.pass / stats.total < pluginPassRateThreshold;
-            });
-            return nonCompliantItems;
-          }),
-        ),
+      // First, collect all plugins from all subcategories
+      const allPlugins = new Set<string>();
+      Object.values(mappings).forEach(({ plugins }) => {
+        const expanded = expandPluginCollections(plugins, categoryStats);
+        expanded.forEach((plugin) => allPlugins.add(plugin));
+      });
+
+      // Then filter for non-compliant ones
+      const { nonCompliant } = categorizePlugins(
+        allPlugins,
+        categoryStats,
+        pluginPassRateThreshold,
       );
+      return nonCompliant;
     },
-    [categoryStats, strategyStats, pluginPassRateThreshold],
+    [categoryStats, pluginPassRateThreshold],
+  );
+
+  const getFrameworkSeverity = React.useCallback(
+    (framework: string): Severity => {
+      const nonCompliantPlugins = getNonCompliantPlugins(framework);
+
+      if (nonCompliantPlugins.length === 0) {
+        return Severity.Low;
+      }
+
+      // Find the highest severity among non-compliant plugins
+      let highestSeverity: Severity = Severity.Low;
+
+      for (const plugin of nonCompliantPlugins) {
+        const pluginSeverity =
+          riskCategorySeverityMap[plugin as keyof typeof riskCategorySeverityMap] || Severity.Low;
+
+        if (pluginSeverity === Severity.Critical) {
+          return Severity.Critical;
+        }
+
+        if (pluginSeverity === Severity.High) {
+          highestSeverity = Severity.High;
+        } else if (pluginSeverity === Severity.Medium && highestSeverity === Severity.Low) {
+          highestSeverity = Severity.Medium;
+        }
+      }
+
+      return highestSeverity;
+    },
+    [getNonCompliantPlugins],
   );
 
   const frameworkCompliance = React.useMemo(() => {
-    return FRAMEWORK_COMPLIANCE_IDS.reduce(
-      (acc, framework) => {
-        const nonCompliantPlugins = getNonCompliantPlugins(framework);
-        acc[framework] = nonCompliantPlugins.length === 0;
-        return acc;
-      },
-      {} as Record<string, boolean>,
-    );
-  }, [getNonCompliantPlugins]);
-
-  const totalFrameworks = FRAMEWORK_COMPLIANCE_IDS.length;
-  const compliantFrameworks = Object.values(frameworkCompliance).filter(Boolean).length;
+    const result: Partial<Record<FrameworkComplianceId, boolean>> = {};
+    frameworksToShow.forEach((framework) => {
+      const nonCompliantPlugins = getNonCompliantPlugins(framework);
+      result[framework] = nonCompliantPlugins.length === 0;
+    });
+    return result;
+  }, [frameworksToShow, getNonCompliantPlugins]);
 
   const pluginComplianceStats = React.useMemo(() => {
-    let totalPlugins = 0;
-    let compliantPlugins = 0;
+    // Collect all unique plugins across all frameworks to show
+    const allFrameworkPlugins = new Set<string>();
 
-    FRAMEWORK_COMPLIANCE_IDS.forEach((framework) => {
+    frameworksToShow.forEach((framework) => {
       const mappings = ALIASED_PLUGIN_MAPPINGS[framework];
       if (!mappings) {
         return;
       }
 
-      Object.values(mappings).forEach(({ plugins, strategies }) => {
-        const items = [...plugins, ...strategies];
-        totalPlugins += items.length;
-
-        const passingItems = items.filter((item) => {
-          const stats = categoryStats[item] || strategyStats[item];
-          return stats && stats.total > 0 && stats.pass / stats.total >= pluginPassRateThreshold;
-        });
-        compliantPlugins += passingItems.length;
+      Object.values(mappings).forEach(({ plugins }) => {
+        const expanded = expandPluginCollections(plugins, categoryStats);
+        expanded.forEach((plugin) => allFrameworkPlugins.add(plugin));
       });
     });
 
-    return {
-      total: totalPlugins,
-      compliant: compliantPlugins,
-      percentage: (compliantPlugins / totalPlugins) * 100,
-    };
-  }, [categoryStats, strategyStats, pluginPassRateThreshold]);
+    // Filter for plugins that have test data
+    const pluginsWithData = Array.from(allFrameworkPlugins).filter(
+      (plugin) => categoryStats[plugin] && categoryStats[plugin].total > 0,
+    );
 
-  const toggleFramework = (framework: string) => {
-    setExpandedFrameworks((prev) => ({
-      ...prev,
-      [framework]: !prev[framework],
-    }));
+    // Count compliant plugins and calculate actual attack success rate
+    let totalTests = 0;
+    let totalFailedTests = 0;
+    const compliantPlugins = pluginsWithData.filter((plugin) => {
+      const stats = categoryStats[plugin];
+      totalTests += stats.total;
+      totalFailedTests += stats.failCount;
+      return stats.pass / stats.total >= pluginPassRateThreshold;
+    }).length;
+
+    return {
+      total: pluginsWithData.length,
+      compliant: compliantPlugins,
+      percentage:
+        pluginsWithData.length > 0 ? (compliantPlugins / pluginsWithData.length) * 100 : 0,
+      attackSuccessRate: calculateAttackSuccessRate(totalTests, totalFailedTests),
+      failedTests: totalFailedTests,
+      totalTests,
+    };
+  }, [frameworksToShow, categoryStats, pluginPassRateThreshold]);
+
+  // Get progress bar color based on attack success rate (high is bad)
+  // All colors are red-toned since attacks succeeding is always bad.
+  const getProgressBarColor = (percentage: number): string => {
+    if (percentage >= 90) {
+      return 'bg-red-800';
+    }
+    if (percentage >= 75) {
+      return 'bg-red-700';
+    }
+    if (percentage >= 50) {
+      return 'bg-red-600';
+    }
+    if (percentage >= 25) {
+      return 'bg-red-500';
+    }
+    return 'bg-red-400';
   };
 
-  if (!showComplianceSection) {
-    return null;
-  }
-
   return (
-    <Card className="framework-compliance-card">
-      <CardContent>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-          <Typography variant="h5">
-            Frameworks ({compliantFrameworks}/{totalFrameworks})
-          </Typography>
-          <Typography variant="h6" color="textSecondary">
-            {pluginComplianceStats.percentage.toFixed(0)}% ({pluginComplianceStats.compliant}/
-            {pluginComplianceStats.total} plugins)
-          </Typography>
-        </Box>
-        <LinearProgress
-          variant="determinate"
-          value={pluginComplianceStats.percentage}
-          sx={{
-            mb: 3,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: 'rgba(0, 0, 0, 0.1)',
-            '& .MuiLinearProgress-bar': {
-              borderRadius: 4,
-              backgroundColor: pluginComplianceStats.percentage === 100 ? '#4caf50' : '#1976d2',
-            },
-          }}
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold">
+          Framework Compliance ({Object.values(frameworkCompliance).filter(Boolean).length}/
+          {frameworksToShow.length})
+        </h2>
+        <CSVExporter
+          categoryStats={categoryStats}
+          pluginPassRateThreshold={pluginPassRateThreshold}
+          frameworksToShow={frameworksToShow}
         />
-        <Grid container spacing={3} className="framework-grid">
-          {FRAMEWORK_COMPLIANCE_IDS.map((framework) => {
-            const nonCompliantPlugins = getNonCompliantPlugins(framework);
-            const isCompliant = frameworkCompliance[framework];
-            const isExpanded = expandedFrameworks[framework];
-            return (
-              <Grid item xs={12} sm={6} md={3} key={framework}>
-                <Card className={`framework-item ${isCompliant ? 'compliant' : 'non-compliant'}`}>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                      <Typography variant="h6">{FRAMEWORK_NAMES[framework]}</Typography>
-                      {isCompliant ? (
-                        <CheckCircleIcon className="icon-compliant" />
-                      ) : (
-                        <CancelIcon className="icon-non-compliant" />
-                      )}
-                    </Box>
-                    {!isCompliant && (
-                      <Box>
-                        <Box
-                          display="flex"
-                          alignItems="center"
-                          mb={1}
-                          onClick={() => toggleFramework(framework)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <Typography variant="body2" fontWeight="bold">
-                            Non-compliant plugins: {nonCompliantPlugins.length}
-                          </Typography>
-                          <IconButton size="small">
-                            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </IconButton>
-                        </Box>
-                        {isExpanded && (
-                          <List dense>
-                            {nonCompliantPlugins.map((plugin) => (
-                              <ListItem key={plugin}>
-                                <ListItemIcon>
-                                  <CancelIcon fontSize="small" color="error" />
-                                </ListItemIcon>
-                                <ListItemText
-                                  primary={
-                                    displayNameOverrides[
-                                      plugin as keyof typeof displayNameOverrides
-                                    ] ||
-                                    categoryAliases[plugin as keyof typeof categoryAliases] ||
-                                    plugin
-                                  }
-                                />
-                              </ListItem>
-                            ))}
-                          </List>
-                        )}
-                      </Box>
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
-      </CardContent>
-    </Card>
+      </div>
+      <Card className="overflow-hidden rounded-xl transition-shadow duration-300">
+        <CardContent className="pt-6">
+          <p className="mb-2 text-sm text-muted-foreground">
+            {formatASRForDisplay(pluginComplianceStats.attackSuccessRate)}% Attack Success Rate (
+            {pluginComplianceStats.failedTests}/{pluginComplianceStats.totalTests} tests failed
+            across {pluginComplianceStats.total} plugins)
+          </p>
+          {/* Progress bar */}
+          <div className="mb-6 h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                getProgressBarColor(pluginComplianceStats.attackSuccessRate),
+              )}
+              style={{ width: `${Math.min(100, pluginComplianceStats.attackSuccessRate)}%` }}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+            {frameworksToShow.map((framework, idx) => {
+              const nonCompliantPlugins = getNonCompliantPlugins(framework);
+              const isCompliant = frameworkCompliance[framework] ?? false;
+              const frameworkSeverity = getFrameworkSeverity(framework);
+
+              return (
+                <FrameworkCard
+                  key={framework}
+                  evalId={evalId}
+                  framework={framework}
+                  isCompliant={isCompliant}
+                  frameworkSeverity={frameworkSeverity}
+                  categoryStats={categoryStats}
+                  pluginPassRateThreshold={pluginPassRateThreshold}
+                  nonCompliantPlugins={nonCompliantPlugins}
+                  showUntestedPlugins={showUntestedPlugins}
+                  idx={idx}
+                />
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 

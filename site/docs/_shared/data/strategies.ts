@@ -9,6 +9,7 @@ export interface Strategy {
   asrIncrease: string;
   link?: string;
   recommended?: boolean;
+  isRemote?: boolean;
 }
 
 export const strategies: Strategy[] = [
@@ -24,6 +25,17 @@ export const strategies: Strategy[] = [
     link: '/docs/red-team/strategies/custom/',
   },
   {
+    category: 'Custom',
+    strategy: 'custom-strategy',
+    displayName: 'Custom Strategy',
+    description: 'Custom prompt-based multi-turn strategy',
+    longDescription:
+      'Write natural language instructions to create powerful multi-turn red team strategies. No coding required.',
+    cost: 'Variable',
+    asrIncrease: 'Variable',
+    link: '/docs/red-team/strategies/custom-strategy/',
+  },
+  {
     category: 'Dynamic (Single-Turn)',
     strategy: 'best-of-n',
     displayName: 'Best-of-N',
@@ -33,6 +45,7 @@ export const strategies: Strategy[] = [
     cost: 'High',
     asrIncrease: '40-60%',
     link: '/docs/red-team/strategies/best-of-n/',
+    isRemote: true,
   },
   {
     category: 'Dynamic (Single-Turn)',
@@ -44,6 +57,19 @@ export const strategies: Strategy[] = [
     cost: 'Medium',
     asrIncrease: '40-60%',
     link: '/docs/red-team/strategies/citation/',
+    isRemote: true,
+  },
+  {
+    category: 'Dynamic (Single-Turn)',
+    strategy: 'authoritative-markup-injection',
+    displayName: 'Authoritative Markup Injection',
+    description: 'Structured format authority',
+    longDescription:
+      'Tests vulnerability to authoritative formatting by embedding prompts in structured markup that exploits trust in formatted content',
+    cost: 'Medium',
+    asrIncrease: '40-60%',
+    link: '/docs/red-team/strategies/authoritative-markup-injection/',
+    isRemote: true,
   },
   {
     category: 'Dynamic (Single-Turn)',
@@ -56,6 +82,7 @@ export const strategies: Strategy[] = [
     asrIncrease: '60-80%',
     link: '/docs/red-team/strategies/composite-jailbreaks/',
     recommended: true,
+    isRemote: true,
   },
   {
     category: 'Dynamic (Single-Turn)',
@@ -67,6 +94,7 @@ export const strategies: Strategy[] = [
     cost: 'High',
     asrIncrease: '0-10%',
     link: '/docs/red-team/strategies/gcg/',
+    isRemote: true,
   },
   {
     category: 'Dynamic (Single-Turn)',
@@ -82,14 +110,28 @@ export const strategies: Strategy[] = [
   },
   {
     category: 'Dynamic (Single-Turn)',
+    strategy: 'jailbreak:meta',
+    displayName: 'Meta-Agent Jailbreaks',
+    description: 'Strategic taxonomy builder',
+    longDescription:
+      'Builds custom attack taxonomies and learns from all attempts using persistent strategic memory to choose which attack types work against your specific target',
+    cost: 'High',
+    asrIncrease: '70-90%',
+    link: '/docs/red-team/strategies/meta/',
+    recommended: true,
+    isRemote: true,
+  },
+  {
+    category: 'Dynamic (Single-Turn)',
     strategy: 'jailbreak:likert',
     displayName: 'Likert-based Jailbreaks',
     description: 'Academic evaluation framework',
     longDescription:
-      'Single-turn adaptation of the Bad Likert Judge technique that uses academic evaluation frameworks and Likert scales to test model behaviors',
+      'Leverages academic evaluation frameworks and Likert scales to frame harmful requests within research contexts',
     cost: 'Medium',
     asrIncrease: '40-60%',
     link: '/docs/red-team/strategies/likert/',
+    isRemote: true,
   },
   {
     category: 'Dynamic (Single-Turn)',
@@ -128,12 +170,46 @@ export const strategies: Strategy[] = [
     category: 'Multi-turn',
     strategy: 'goat',
     displayName: 'GOAT',
-    description: 'Gradual escalation',
+    description: 'Generative Offensive Agent Tester',
     longDescription:
       'Uses a Generative Offensive Agent Tester to dynamically generate multi-turn conversations',
     cost: 'High',
     asrIncrease: '70-90%',
     link: '/docs/red-team/strategies/goat/',
+    isRemote: true,
+  },
+  {
+    category: 'Multi-turn',
+    strategy: 'jailbreak:hydra',
+    displayName: 'Hydra Multi-turn',
+    description: 'Adaptive multi-turn branching',
+    longDescription:
+      'Adaptive multi-turn jailbreak agent that pivots across branches with persistent scan-wide memory to uncover hidden vulnerabilities',
+    cost: 'High',
+    asrIncrease: '70-90%',
+    link: '/docs/red-team/strategies/hydra/',
+    isRemote: true,
+  },
+  {
+    category: 'Multi-turn',
+    strategy: 'mischievous-user',
+    displayName: 'Mischievous User',
+    description: 'Mischievous user conversations',
+    longDescription: 'Simulates a multi-turn conversation between a mischievous user and an agent',
+    cost: 'High',
+    asrIncrease: '10-20%',
+    link: '/docs/red-team/strategies/mischievous-user/',
+  },
+  {
+    category: 'Static (Single-Turn)',
+    strategy: 'video',
+    displayName: 'Video Encoding',
+    description: 'Text-to-video encoding bypass',
+    longDescription:
+      'Tests handling of text embedded in videos and encoded as base64 to potentially bypass text-based content filters',
+    cost: 'Low',
+    asrIncrease: '20-30%',
+    link: '/docs/red-team/strategies/video/',
   },
   {
     category: 'Static (Single-Turn)',
@@ -156,6 +232,7 @@ export const strategies: Strategy[] = [
     cost: 'Low',
     asrIncrease: '20-30%',
     link: '/docs/red-team/strategies/audio/',
+    isRemote: true,
   },
   {
     category: 'Static (Single-Turn)',
@@ -181,6 +258,17 @@ export const strategies: Strategy[] = [
   },
   {
     category: 'Static (Single-Turn)',
+    strategy: 'homoglyph',
+    displayName: 'Homoglyph',
+    description: 'Unicode confusable characters',
+    longDescription:
+      'Tests detection and handling of text with homoglyphs (visually similar Unicode characters) to bypass content filters',
+    cost: 'Low',
+    asrIncrease: '20-30%',
+    link: '/docs/red-team/strategies/homoglyph/',
+  },
+  {
+    category: 'Static (Single-Turn)',
     strategy: 'basic',
     displayName: 'Basic',
     description: 'Plugin-generated test cases',
@@ -203,25 +291,14 @@ export const strategies: Strategy[] = [
   },
   {
     category: 'Static (Single-Turn)',
-    strategy: 'multilingual',
-    displayName: 'Multilingual',
-    description: 'Cross-language testing',
+    strategy: 'jailbreak-templates',
+    displayName: 'Jailbreak Templates',
+    description: 'Static jailbreak templates',
     longDescription:
-      'Tests handling of inputs across multiple languages, focusing on low-resource languages that may bypass content filters',
-    cost: 'Low',
-    asrIncrease: '30-40%',
-    link: '/docs/red-team/strategies/multilingual/',
-  },
-  {
-    category: 'Static (Single-Turn)',
-    strategy: 'prompt-injection',
-    displayName: 'Prompt Injection',
-    description: 'Direct system prompts',
-    longDescription:
-      'Tests common direct prompt injection vulnerabilities using a curated list of injection techniques',
+      'Tests LLM resistance to known jailbreak techniques (DAN, Skeleton Key, etc.) using static templates. Note: Does not cover modern prompt injection techniques.',
     cost: 'Low',
     asrIncrease: '20-30%',
-    link: '/docs/red-team/strategies/prompt-injection/',
+    link: '/docs/red-team/strategies/jailbreak-templates/',
   },
   {
     category: 'Static (Single-Turn)',
@@ -233,6 +310,61 @@ export const strategies: Strategy[] = [
     cost: 'Low',
     asrIncrease: '20-30%',
     link: '/docs/red-team/strategies/rot13/',
+  },
+  {
+    category: 'Static (Single-Turn)',
+    strategy: 'morse',
+    displayName: 'Morse Code',
+    description: 'Dots and dashes encoding',
+    longDescription:
+      'Tests handling of text encoded in Morse code (dots and dashes) to potentially bypass content filters',
+    cost: 'Low',
+    asrIncrease: '20-30%',
+    link: '/docs/red-team/strategies/other-encodings/#morse-code',
+  },
+  {
+    category: 'Static (Single-Turn)',
+    strategy: 'piglatin',
+    displayName: 'Pig Latin',
+    description: 'Word transformation encoding',
+    longDescription:
+      'Tests handling of text transformed into Pig Latin (rearranging word parts) to potentially bypass content filters',
+    cost: 'Low',
+    asrIncrease: '20-30%',
+    link: '/docs/red-team/strategies/other-encodings/#pig-latin',
+  },
+  {
+    category: 'Static (Single-Turn)',
+    strategy: 'camelcase',
+    displayName: 'camelCase',
+    description: 'camelCase transformation',
+    longDescription:
+      'Tests handling of text transformed into camelCase (removing spaces and capitalizing words) to potentially bypass content filters',
+    cost: 'Low',
+    asrIncrease: '0-5%',
+    link: '/docs/red-team/strategies/other-encodings/#camelcase',
+  },
+  {
+    category: 'Static (Single-Turn)',
+    strategy: 'emoji',
+    displayName: 'Emoji Smuggling',
+    description: 'Variation selector encoding',
+    longDescription:
+      'Tests hiding UTF-8 payloads inside emoji variation selectors to evaluate filter evasion.',
+    cost: 'Low',
+    asrIncrease: '0-5%',
+    link: '/docs/red-team/strategies/other-encodings/#emoji-encoding',
+  },
+  {
+    category: 'Custom',
+    strategy: 'layer',
+    displayName: 'Layer',
+    description: 'Compose multiple strategies',
+    longDescription:
+      'Compose multiple red team strategies sequentially (e.g., jailbreak → base64) to create sophisticated attack chains',
+    cost: 'Variable',
+    asrIncrease: 'Cumulative',
+    link: '/docs/red-team/strategies/layer/',
   },
   {
     category: 'Regression',

@@ -1,3 +1,8 @@
+---
+sidebar_label: Model-graded Closed QA
+description: 'Assess closed-domain QA performance using model-based evaluation for accuracy, completeness, and answer correctness'
+---
+
 # Model-graded Closed QA
 
 `model-graded-closedqa` is a criteria-checking evaluation that uses OpenAI's public evals prompt to determine if an LLM output meets specific requirements.
@@ -32,7 +37,7 @@ Here's a complete example showing how to use model-graded-closedqa:
 prompts:
   - 'What is {{topic}}?'
 providers:
-  - openai:gpt-4
+  - openai:gpt-5
 tests:
   - vars:
       topic: quantum computing
@@ -50,7 +55,7 @@ Like other model-graded assertions, you can override the default grader:
 1. Using the CLI:
 
    ```sh
-   promptfoo eval --grader openai:gpt-4o-mini
+   promptfoo eval --grader openai:gpt-5-mini
    ```
 
 2. Using test options:
@@ -58,7 +63,7 @@ Like other model-graded assertions, you can override the default grader:
    ```yaml
    defaultTest:
      options:
-       provider: openai:gpt-4o-mini
+       provider: openai:gpt-5-mini
    ```
 
 3. Using assertion-level override:
@@ -66,7 +71,7 @@ Like other model-graded assertions, you can override the default grader:
    assert:
      - type: model-graded-closedqa
        value: Is concise and clear
-       provider: openai:gpt-4o-mini
+       provider: openai:gpt-5-mini
    ```
 
 ### Customizing the Prompt

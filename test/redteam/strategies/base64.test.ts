@@ -1,5 +1,7 @@
+import { describe, expect, it } from 'vitest';
 import { addBase64Encoding } from '../../../src/redteam/strategies/base64';
-import type { TestCase } from '../../../src/types';
+
+import type { TestCase } from '../../../src/types/index';
 
 describe('addBase64Encoding', () => {
   const mockTestCases: TestCase[] = [
@@ -18,6 +20,7 @@ describe('addBase64Encoding', () => {
     expect(result[0].vars?.query).toBe('SGVsbG8sIHdvcmxkIQ==');
     expect(result[0].metadata).toEqual({
       strategyId: 'base64',
+      originalText: 'Hello, world!',
     });
   });
 });

@@ -1,10 +1,9 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 description: 'LangChain Red Team Example'
 
 targets:
   - id: 'file://langchain_provider.py'
     label: 'LangChain App'
-    config:
-      pythonExecutable: './venv/bin/python'
 
 redteam:
   numTests: 5

@@ -1,3 +1,8 @@
+---
+sidebar_label: Factuality
+description: 'Validate factual accuracy of LLM responses using AI-powered fact-checking against verified knowledge bases and sources'
+---
+
 # Factuality
 
 The `factuality` assertion evaluates the factual consistency between an LLM output and a reference answer. It uses a structured prompt based on [OpenAI's evals](https://github.com/openai/evals/blob/main/evals/registry/modelgraded/fact.yaml) to determine if the output is factually consistent with the reference.
@@ -12,6 +17,8 @@ assert:
     # Specify the reference statement to check against:
     value: The Earth orbits around the Sun
 ```
+
+For non-English evaluation output, see the [multilingual evaluation guide](/docs/configuration/expected-outputs/model-graded#non-english-evaluation).
 
 ## How it works
 
@@ -33,8 +40,8 @@ Here's a complete example showing how to use factuality checks:
 prompts:
   - 'What is the capital of {{state}}?'
 providers:
-  - openai:gpt-4o
-  - anthropic:claude-3-7-sonnet-20250219
+  - openai:gpt-5
+  - anthropic:claude-sonnet-4-5-20250929
 tests:
   - vars:
       state: California
@@ -70,7 +77,7 @@ Like other model-graded assertions, you can override the default grader:
 1. Using the CLI:
 
    ```sh
-   promptfoo eval --grader openai:gpt-4o-mini
+   promptfoo eval --grader openai:gpt-5-mini
    ```
 
 2. Using test options:
@@ -78,7 +85,7 @@ Like other model-graded assertions, you can override the default grader:
    ```yaml
    defaultTest:
      options:
-       provider: anthropic:claude-3-7-sonnet-20250219
+       provider: anthropic:claude-sonnet-4-5-20250929
    ```
 
 3. Using assertion-level override:
@@ -87,7 +94,7 @@ Like other model-graded assertions, you can override the default grader:
    assert:
      - type: factuality
        value: Sacramento is the capital of California
-       provider: openai:gpt-4o-mini
+       provider: openai:gpt-5-mini
    ```
 
 ## Customizing the Prompt
@@ -96,7 +103,7 @@ You can customize the evaluation prompt using the `rubricPrompt` property. The p
 
 - `{{input}}`: The original prompt/question
 - `{{ideal}}`: The reference answer (from the `value` field)
-- `{{completion}}`: The LLM's actual response
+- `{{completion}}`: The LLM's actual response (provided automatically by promptfoo)
 
 Your custom prompt should instruct the model to either:
 
@@ -128,6 +135,18 @@ The factuality checker will parse either format:
 
 - A single letter response like "A" or "(A)"
 - A JSON object: `{"category": "A", "reason": "Detailed explanation..."}`
+
+## Using Factuality with CSV
+
+Use the `factuality:` prefix in `__expected` columns:
+
+```csv title="tests.csv"
+question,__expected
+"What does GPT stand for?","factuality:Generative Pre-trained Transformer"
+"What is photosynthesis?","factuality:Plants convert sunlight into chemical energy"
+```
+
+To apply factuality to all rows, see [CSV with defaultTest](/docs/configuration/test-cases#csv-with-defaulttest).
 
 ## See Also
 

@@ -1,9 +1,16 @@
 import { fetchWithCache } from '../cache';
 import { getEnvString } from '../envars';
 import logger from '../logger';
-import type { ApiProvider, ProviderResponse, TokenUsage } from '../types';
+import { calculateCost, parseChatPrompt, REQUEST_TIMEOUT_MS } from './shared';
+
+import type { EnvVarKey } from '../envars';
 import type { EnvOverrides } from '../types/env';
-import { calculateCost, REQUEST_TIMEOUT_MS, parseChatPrompt } from './shared';
+import type {
+  ApiProvider,
+  CallApiContextParams,
+  ProviderResponse,
+  TokenUsage,
+} from '../types/index';
 
 const AI21_CHAT_MODELS = [
   {
@@ -24,7 +31,7 @@ const AI21_CHAT_MODELS = [
 
 interface AI21ChatCompletionOptions {
   apiKey?: string;
-  apiKeyEnvar?: string;
+  apiKeyEnvar?: EnvVarKey;
   apiBaseUrl?: string;
   temperature?: number;
   top_p?: number;
@@ -100,12 +107,16 @@ export class AI21ChatCompletionProvider implements ApiProvider {
     );
   }
 
+  requiresApiKey(): boolean {
+    return true;
+  }
+
   getApiKey(): string | undefined {
     logger.debug(`AI21 apiKeyenvar: ${this.config.apiKeyEnvar}`);
     return (
       this.config.apiKey ||
       (this.config?.apiKeyEnvar
-        ? process.env[this.config.apiKeyEnvar] ||
+        ? getEnvString(this.config.apiKeyEnvar) ||
           this.env?.[this.config.apiKeyEnvar as keyof EnvOverrides]
         : undefined) ||
       this.env?.AI21_API_KEY ||
@@ -113,28 +124,33 @@ export class AI21ChatCompletionProvider implements ApiProvider {
     );
   }
 
-  async callApi(prompt: string): Promise<ProviderResponse> {
+  async callApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
     if (!this.getApiKey()) {
       throw new Error(
         'AI21 API key is not set. Set the AI21_API_KEY environment variable or add `apiKey` or `apiKeyEnvar` to the provider config.',
       );
     }
 
+    // Merge configs from the provider and the prompt
+    const config = {
+      ...this.config,
+      ...context?.prompt?.config,
+    };
+
     const messages = parseChatPrompt(prompt, [{ role: 'user', content: prompt }]);
 
     const body = {
       model: this.modelName,
       messages,
-      temperature: this.config?.temperature ?? 0.1,
-      top_p: this.config?.top_p || 1,
-      max_tokens: this.config?.max_tokens || 1024,
+      temperature: config?.temperature ?? 0.1,
+      top_p: config?.top_p ?? 1,
+      max_tokens: config?.max_tokens ?? 1024,
       n: 1,
       stop: [],
-      response_format: this.config.response_format || { type: 'text' },
+      response_format: config.response_format || { type: 'text' },
     };
 
     const url = `${this.getApiUrl()}/chat/completions`;
-    logger.debug(`AI21 API request: ${url} ${JSON.stringify(body)}`);
 
     let data,
       cached = false;
@@ -158,14 +174,14 @@ export class AI21ChatCompletionProvider implements ApiProvider {
       };
     }
 
-    logger.debug(`AI21 API response: ${JSON.stringify(data)}`);
-
     if (data.error) {
       return {
         error: `API call error: ${data.error}`,
       };
     }
-    if (!data.choices[0] && !data.choices[0].message.content) {
+    // Ensure the expected shape of the API response to avoid accessing
+    // properties of undefined
+    if (!data.choices?.[0] || !data.choices[0].message?.content) {
       return {
         error: `Malformed response data: ${JSON.stringify(data)}`,
       };
@@ -177,7 +193,7 @@ export class AI21ChatCompletionProvider implements ApiProvider {
       cached,
       cost: calculateAI21Cost(
         this.modelName,
-        this.config,
+        config,
         data.usage?.prompt_tokens,
         data.usage?.completion_tokens,
       ),

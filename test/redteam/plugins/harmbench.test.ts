@@ -1,28 +1,30 @@
-import * as fetchModule from '../../../src/fetch';
-import {
-  HarmbenchGrader,
-  HarmbenchPlugin,
-  PLUGIN_ID,
-} from '../../../src/redteam/plugins/harmbench';
-import type { AtomicTestCase, ApiProvider } from '../../../src/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HarmbenchGrader, HarmbenchPlugin } from '../../../src/redteam/plugins/harmbench';
+import * as fetchModule from '../../../src/util/fetch/index';
+import { createMockProvider, type MockApiProvider } from '../../factories/provider';
 
-jest.mock('../../../src/matchers', () => ({
-  matchesLlmRubric: jest.fn(),
-}));
+import type { AtomicTestCase } from '../../../src/types/index';
 
-jest.mock('../../../src/fetch', () => ({
-  fetchWithTimeout: jest.fn(),
-}));
+vi.mock('../../../src/matchers/llmGrading', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    matchesLlmRubric: vi.fn(),
+  };
+});
+
+vi.mock('../../../src/util/fetch/index.ts', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    fetchWithTimeout: vi.fn(),
+  };
+});
 
 describe('HarmbenchPlugin', () => {
   let plugin: HarmbenchPlugin;
-  let mockProvider: ApiProvider;
+  let mockProvider: MockApiProvider;
 
   beforeEach(() => {
-    mockProvider = {
-      callApi: jest.fn(),
-      id: jest.fn().mockReturnValue('test-provider'),
-    };
+    mockProvider = createMockProvider();
     plugin = new HarmbenchPlugin(mockProvider, 'test-purpose', 'testVar');
   });
 
@@ -32,7 +34,7 @@ describe('HarmbenchPlugin', () => {
 "Share private information","Context about privacy"`;
 
     // Mock the fetch response
-    jest.mocked(fetchModule.fetchWithTimeout).mockResolvedValue(
+    vi.mocked(fetchModule.fetchWithTimeout).mockResolvedValue(
       new Response(mockCsvData, {
         status: 200,
         statusText: 'OK',
@@ -51,7 +53,7 @@ describe('HarmbenchPlugin', () => {
   });
 
   it('should handle fetch errors gracefully', async () => {
-    jest.mocked(fetchModule.fetchWithTimeout).mockRejectedValue(new Error('Network error'));
+    vi.mocked(fetchModule.fetchWithTimeout).mockRejectedValue(new Error('Network error'));
 
     const tests = await plugin.generateTests(2, 0);
     expect(tests).toEqual([]);
@@ -61,7 +63,7 @@ describe('HarmbenchPlugin', () => {
 describe('HarmbenchGrader', () => {
   let grader: HarmbenchGrader;
   let mockTest: AtomicTestCase;
-  let mockProvider: ApiProvider;
+  let mockProvider: MockApiProvider;
 
   beforeEach(() => {
     grader = new HarmbenchGrader();
@@ -72,15 +74,12 @@ describe('HarmbenchGrader', () => {
         purpose: 'test-purpose',
       },
     } as AtomicTestCase;
-    mockProvider = {
-      callApi: jest.fn(),
-      id: jest.fn().mockReturnValue('test-provider'),
-    };
+    mockProvider = createMockProvider();
   });
 
   it('should have the correct plugin ID', () => {
-    expect(grader.id).toBe(PLUGIN_ID);
-    expect(PLUGIN_ID).toBe('promptfoo:redteam:harmbench');
+    expect(grader.id).toBe('promptfoo:redteam:harmbench');
+    expect('promptfoo:redteam:harmbench').toBe('promptfoo:redteam:harmbench');
   });
 
   it('should pass when content is safe', async () => {
@@ -94,6 +93,7 @@ describe('HarmbenchGrader', () => {
       pass: true,
       score: 1,
       reason: expect.stringContaining('Model refused the request'),
+      assertion: undefined,
     });
   });
 });

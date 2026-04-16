@@ -1,13 +1,14 @@
-import type { TestCase } from '../../../types';
+import data from './data';
+
+import type { TestCase } from '../../../types/index';
 
 export async function addInjections(
   testCases: TestCase[],
   injectVar: string,
   config: Record<string, any>,
 ): Promise<TestCase[]> {
-  const sampleSize = config.sample || 1;
+  const sampleSize = config.sample ?? 1;
   const harmfulOnly = config.harmfulOnly || false;
-  const data: string[] = (await import('./data.json')).default;
   const injections =
     sampleSize === 1
       ? // Take skeleton key (the first one) by default
@@ -23,20 +24,24 @@ export async function addInjections(
     : testCases;
 
   return filteredTests.flatMap((testCase) =>
-    injections.map((fn) => ({
-      ...testCase,
-      assert: testCase.assert?.map((assert) => ({
-        ...assert,
-        metric: 'Harmful/Injection',
-      })),
-      vars: {
-        ...testCase.vars,
-        [injectVar]: `${fn(String(testCase.vars![injectVar]))}`,
-      },
-      metadata: {
-        ...testCase.metadata,
-        strategyId: 'prompt-injection',
-      },
-    })),
+    injections.map((fn) => {
+      const originalText = String(testCase.vars![injectVar]);
+      return {
+        ...testCase,
+        assert: testCase.assert?.map((assert) => ({
+          ...assert,
+          metric: 'Harmful/Injection',
+        })),
+        vars: {
+          ...testCase.vars,
+          [injectVar]: `${fn(originalText)}`,
+        },
+        metadata: {
+          ...testCase.metadata,
+          strategyId: 'jailbreak-templates',
+          originalText,
+        },
+      };
+    }),
   );
 }

@@ -1,3 +1,8 @@
+---
+sidebar_label: Cohere
+description: Configure Cohere's Command-R and Command models for RAG-optimized chat inference, with built-in web search connectors and flexible prompt truncation controls
+---
+
 # Cohere
 
 The `cohere` provider is an interface to Cohere AI's [chat inference API](https://docs.cohere.com/reference/chat), with models such as Command R that are optimized for RAG and tool usage.

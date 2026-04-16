@@ -1,22 +1,30 @@
+import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_NUM_TESTS_PER_PLUGIN,
-  REDTEAM_MODEL,
-  LLAMA_GUARD_REPLICATE_PROVIDER,
-  LLAMA_GUARD_ENABLED_CATEGORIES,
-  COLLECTIONS,
-  UNALIGNED_PROVIDER_HARM_PLUGINS,
-  REDTEAM_PROVIDER_HARM_PLUGINS,
-  HARM_PLUGINS,
-  PII_PLUGINS,
-  BASE_PLUGINS,
   ADDITIONAL_PLUGINS,
-  CONFIG_REQUIRED_PLUGINS,
-  DEFAULT_PLUGINS,
+  AGENTIC_PLUGINS,
   ALL_PLUGINS,
-  Severity,
-  severityDisplayNames,
-  PLUGIN_PRESET_DESCRIPTIONS,
+  BASE_PLUGINS,
+  COLLECTIONS,
+  CONFIG_REQUIRED_PLUGINS,
+  categoryDescriptions,
+  DEFAULT_NUM_TESTS_PER_PLUGIN,
+  DEFAULT_PLUGINS,
+  HARM_PLUGINS,
+  LLAMA_GUARD_ENABLED_CATEGORIES,
+  LLAMA_GUARD_REPLICATE_PROVIDER,
+  PII_PLUGINS,
+  REDTEAM_MODEL,
+  REDTEAM_PROVIDER_HARM_PLUGINS,
+  REMOTE_ONLY_PLUGIN_IDS,
+  riskCategories,
+  UI_DISABLED_WHEN_REMOTE_UNAVAILABLE,
+  UNALIGNED_PROVIDER_HARM_PLUGINS,
 } from '../../src/redteam/constants';
+import {
+  CODING_AGENT_COLLECTIONS,
+  CODING_AGENT_CORE_PLUGINS,
+  CODING_AGENT_PLUGINS,
+} from '../../src/redteam/constants/codingAgents';
 
 describe('constants', () => {
   it('DEFAULT_NUM_TESTS_PER_PLUGIN should be defined', () => {
@@ -26,14 +34,12 @@ describe('constants', () => {
 
   it('REDTEAM_MODEL should be defined', () => {
     expect(REDTEAM_MODEL).toBeDefined();
-    expect(REDTEAM_MODEL).toBe('openai:chat:gpt-4o');
+    expect(REDTEAM_MODEL).toBe('openai:chat:gpt-5.4-2026-03-05');
   });
 
   it('LLAMA_GUARD_REPLICATE_PROVIDER should be defined', () => {
     expect(LLAMA_GUARD_REPLICATE_PROVIDER).toBeDefined();
-    expect(LLAMA_GUARD_REPLICATE_PROVIDER).toBe(
-      'replicate:moderation:meta/llama-guard-3-8b:146d1220d447cdcc639bc17c5f6137416042abee6ae153a2615e6ef5749205c8',
-    );
+    expect(LLAMA_GUARD_REPLICATE_PROVIDER).toBe('replicate:moderation:meta/llama-guard-4-12b');
   });
 
   it('LLAMA_GUARD_ENABLED_CATEGORIES should contain expected categories', () => {
@@ -43,7 +49,24 @@ describe('constants', () => {
   });
 
   it('COLLECTIONS should contain expected values', () => {
-    expect(COLLECTIONS).toEqual(['default', 'foundation', 'harmful', 'pii']);
+    expect(COLLECTIONS).toEqual([
+      'default',
+      'foundation',
+      'harmful',
+      'pii',
+      'bias',
+      'medical',
+      'pharmacy',
+      'insurance',
+      'financial',
+      'ecommerce',
+      'telecom',
+      'teen-safety',
+      'realestate',
+      'guardrails-eval',
+      'coding-agent:core',
+      'coding-agent:all',
+    ]);
   });
 
   it('UNALIGNED_PROVIDER_HARM_PLUGINS should contain expected plugins', () => {
@@ -80,41 +103,142 @@ describe('constants', () => {
     expect(BASE_PLUGINS).toContain('hallucination');
   });
 
-  it('DEFAULT_PLUGINS should be a Set containing base plugins, harm plugins and PII plugins', () => {
-    expect(DEFAULT_PLUGINS).toBeInstanceOf(Set);
-    expect(DEFAULT_PLUGINS.has('contracts')).toBe(true);
-    expect(DEFAULT_PLUGINS.has('pii:api-db')).toBe(true);
+  it('ADDITIONAL_PLUGINS should contain MCP plugin', () => {
+    expect(ADDITIONAL_PLUGINS).toContain('mcp');
   });
 
-  it('ALL_PLUGINS should contain all plugins sorted', () => {
-    expect(ALL_PLUGINS).toEqual(
-      [...new Set([...DEFAULT_PLUGINS, ...ADDITIONAL_PLUGINS, ...CONFIG_REQUIRED_PLUGINS])].sort(),
+  it('ADDITIONAL_PLUGINS should contain supported coding-agent plugins', () => {
+    expect(CODING_AGENT_PLUGINS).toEqual([
+      'coding-agent:repo-prompt-injection',
+      'coding-agent:terminal-output-injection',
+      'coding-agent:secret-env-read',
+      'coding-agent:sandbox-read-escape',
+      'coding-agent:verifier-sabotage',
+      'coding-agent:secret-file-read',
+      'coding-agent:sandbox-write-escape',
+      'coding-agent:network-egress-bypass',
+      'coding-agent:procfs-credential-read',
+      'coding-agent:delayed-ci-exfil',
+      'coding-agent:generated-vulnerability',
+      'coding-agent:automation-poisoning',
+      'coding-agent:steganographic-exfil',
+    ]);
+
+    CODING_AGENT_PLUGINS.forEach((plugin) => {
+      expect(ADDITIONAL_PLUGINS).toContain(plugin);
+      expect(ALL_PLUGINS).toContain(plugin);
+    });
+  });
+
+  it('CODING_AGENT_CORE_PLUGINS should keep the baseline collection focused', () => {
+    expect(CODING_AGENT_COLLECTIONS).toEqual(['coding-agent:core', 'coding-agent:all']);
+    expect(CODING_AGENT_CORE_PLUGINS).toEqual([
+      'coding-agent:repo-prompt-injection',
+      'coding-agent:terminal-output-injection',
+      'coding-agent:secret-env-read',
+      'coding-agent:sandbox-read-escape',
+      'coding-agent:verifier-sabotage',
+    ]);
+  });
+
+  it('remote-only UI guards should include coding-agent plugins and collections', () => {
+    expect(REMOTE_ONLY_PLUGIN_IDS).toEqual(
+      expect.arrayContaining([...CODING_AGENT_COLLECTIONS, ...CODING_AGENT_PLUGINS]),
+    );
+    expect(UI_DISABLED_WHEN_REMOTE_UNAVAILABLE).toEqual(
+      expect.arrayContaining([...CODING_AGENT_COLLECTIONS, ...CODING_AGENT_PLUGINS]),
     );
   });
 
-  it('Severity enum should have expected values', () => {
-    expect(Severity.Critical).toBe('critical');
-    expect(Severity.High).toBe('high');
-    expect(Severity.Medium).toBe('medium');
-    expect(Severity.Low).toBe('low');
+  it('AGENTIC_PLUGINS should contain expected plugins', () => {
+    expect(AGENTIC_PLUGINS).toContain('agentic:memory-poisoning');
+    expect(AGENTIC_PLUGINS.length).toBe(1);
   });
 
-  it('severityDisplayNames should have display names for all severities', () => {
-    expect(severityDisplayNames[Severity.Critical]).toBe('Critical');
-    expect(severityDisplayNames[Severity.High]).toBe('High');
-    expect(severityDisplayNames[Severity.Medium]).toBe('Medium');
-    expect(severityDisplayNames[Severity.Low]).toBe('Low');
+  it('DEFAULT_PLUGINS should contain expected plugins', () => {
+    expect(DEFAULT_PLUGINS).toContain('contracts');
+    expect(DEFAULT_PLUGINS).toContain('excessive-agency');
+    expect(DEFAULT_PLUGINS).toContain('hallucination');
+    expect(DEFAULT_PLUGINS).toContain('harmful:child-exploitation');
+    expect(DEFAULT_PLUGINS).toContain('pii:direct');
   });
 
-  it('PLUGIN_PRESET_DESCRIPTIONS should contain expected descriptions', () => {
-    expect(PLUGIN_PRESET_DESCRIPTIONS.RAG).toBe(
-      'Recommended plugins plus additional tests for RAG specific scenarios like access control',
-    );
-    expect(PLUGIN_PRESET_DESCRIPTIONS.Recommended).toBe(
-      'A broad set of plugins recommended by Promptfoo',
-    );
-    expect(PLUGIN_PRESET_DESCRIPTIONS['Minimal Test']).toBe(
-      'Minimal set of plugins to validate your setup',
-    );
+  it('ALL_PLUGINS should contain base and additional plugins', () => {
+    // ALL_PLUGINS should contain all BASE_PLUGINS
+    BASE_PLUGINS.forEach((plugin) => {
+      expect(ALL_PLUGINS).toContain(plugin);
+    });
+    // ALL_PLUGINS should contain all PII_PLUGINS
+    PII_PLUGINS.forEach((plugin) => {
+      expect(ALL_PLUGINS).toContain(plugin);
+    });
+    // ALL_PLUGINS should contain all HARM_PLUGINS keys
+    Object.keys(HARM_PLUGINS).forEach((plugin) => {
+      expect(ALL_PLUGINS).toContain(plugin);
+    });
+    // ALL_PLUGINS should be an array with no duplicates
+    expect(new Set(ALL_PLUGINS).size).toBe(ALL_PLUGINS.length);
+  });
+
+  it('CONFIG_REQUIRED_PLUGINS should have valid plugins', () => {
+    expect(CONFIG_REQUIRED_PLUGINS).toContain('policy');
+    expect(CONFIG_REQUIRED_PLUGINS).toContain('intent');
+    expect(Array.isArray(CONFIG_REQUIRED_PLUGINS)).toBe(true);
+  });
+
+  describe('categoryDescriptions', () => {
+    it('should have descriptions for all categories', () => {
+      const expectedKeys = [
+        'Security & Access Control',
+        'Compliance & Legal',
+        'Trust & Safety',
+        'Brand',
+        'Datasets',
+        'Domain-Specific Risks',
+        'Coding Agent Security',
+      ];
+      expectedKeys.forEach((key) => {
+        expect(categoryDescriptions).toHaveProperty(key);
+        expect(categoryDescriptions[key as keyof typeof categoryDescriptions]).toBeTruthy();
+      });
+    });
+  });
+
+  describe('riskCategories', () => {
+    it('should have brand risks', () => {
+      expect(riskCategories.Brand).toBeDefined();
+      expect(riskCategories.Brand).toContain('competitors');
+      expect(riskCategories.Brand).toContain('politics');
+    });
+
+    it('should have compliance & legal risks', () => {
+      expect(riskCategories['Compliance & Legal']).toBeDefined();
+      expect(riskCategories['Compliance & Legal']).toContain('harmful:intellectual-property');
+      expect(riskCategories['Compliance & Legal']).toContain('contracts');
+    });
+
+    it('should have security & access control risks', () => {
+      expect(riskCategories['Security & Access Control']).toBeDefined();
+      expect(riskCategories['Security & Access Control']).toContain('hijacking');
+    });
+
+    it('should have trust & safety risks', () => {
+      expect(riskCategories['Trust & Safety']).toBeDefined();
+      expect(riskCategories['Trust & Safety']).toContain('harmful:harassment-bullying');
+      expect(riskCategories['Trust & Safety']).toContain('harmful:hate');
+    });
+
+    it('should have domain-specific risks', () => {
+      expect(riskCategories['Domain-Specific Risks']).toBeDefined();
+    });
+
+    it('should have datasets', () => {
+      expect(riskCategories['Datasets']).toBeDefined();
+    });
+
+    it('should have coding agent risks', () => {
+      expect(riskCategories['Coding Agent Security']).toBeDefined();
+      expect(riskCategories['Coding Agent Security']).toEqual(CODING_AGENT_PLUGINS);
+    });
   });
 });

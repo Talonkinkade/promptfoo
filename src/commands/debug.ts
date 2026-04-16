@@ -1,12 +1,15 @@
-import chalk from 'chalk';
-import type { Command } from 'commander';
 import * as fs from 'fs';
 import * as os from 'os';
-import { version } from '../../package.json';
+
+import chalk from 'chalk';
+import { getEnvBool, getEnvString } from '../envars';
 import logger from '../logger';
-import type { UnifiedConfig } from '../types';
-import { printBorder } from '../util';
 import { resolveConfigs } from '../util/config/load';
+import { printBorder } from '../util/index';
+import { VERSION } from '../version';
+import type { Command } from 'commander';
+
+import type { UnifiedConfig } from '../types/index';
 
 interface DebugOptions {
   config?: string;
@@ -16,7 +19,7 @@ interface DebugOptions {
 
 async function doDebug(options: DebugOptions): Promise<void> {
   const debugInfo = {
-    version,
+    version: VERSION,
     platform: {
       os: os.platform(),
       release: os.release(),
@@ -24,13 +27,15 @@ async function doDebug(options: DebugOptions): Promise<void> {
       nodeVersion: process.version,
     },
     env: {
-      NODE_ENV: process.env.NODE_ENV,
-      httpProxy: process.env.HTTP_PROXY || process.env.http_proxy,
-      httpsProxy: process.env.HTTPS_PROXY || process.env.https_proxy,
-      allProxy: process.env.ALL_PROXY || process.env.all_proxy,
-      noProxy: process.env.NO_PROXY || process.env.no_proxy,
-      nodeExtra: process.env.NODE_EXTRA_CA_CERTS,
-      nodeTls: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
+      NODE_ENV: getEnvString('NODE_ENV'),
+      httpProxy: getEnvString('HTTP_PROXY') || getEnvString('http_proxy'),
+      httpsProxy: getEnvString('HTTPS_PROXY') || getEnvString('https_proxy'),
+      allProxy: getEnvString('ALL_PROXY') || getEnvString('all_proxy'),
+      noProxy: getEnvString('NO_PROXY') || getEnvString('no_proxy'),
+      nodeExtra: getEnvString('NODE_EXTRA_CA_CERTS'),
+      nodeTls: getEnvString('NODE_TLS_REJECT_UNAUTHORIZED'),
+      telemetryDisabled: getEnvBool('PROMPTFOO_DISABLE_TELEMETRY'),
+      telemetryDebug: getEnvBool('PROMPTFOO_TELEMETRY_DEBUG'),
     },
     configInfo: {
       defaultConfigPath: options.defaultConfigPath,

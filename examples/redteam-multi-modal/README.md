@@ -6,6 +6,7 @@ You can run this example with:
 
 ```bash
 npx promptfoo@latest init --example redteam-multi-modal
+cd redteam-multi-modal
 ```
 
 ## Quick Start
@@ -35,26 +36,31 @@ npx promptfoo@latest init --example redteam-multi-modal
    npx promptfoo@latest redteam eval -c redteam.unsafebench.yaml
    ```
 
-6. Review results in the promptfoo interface
+6. Run the VLGuard example:
+
+   ```bash
+   npx promptfoo@latest redteam eval -c redteam.vlguard.yaml
+   ```
+
+7. Review results in the promptfoo interface
 
 ## Environment Variables
 
 This example requires the following environment variables depending on which approach you're using:
 
 - For the Static Image and Image Strategy examples:
-
   - `AWS_ACCESS_KEY_ID` - Your AWS access key for Amazon Bedrock
   - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key for Amazon Bedrock
   - `AWS_REGION` - Your AWS region (e.g., `us-east-1`)
 
-- For the UnsafeBench example:
-  - `HF_TOKEN` or `HF_API_TOKEN` - Your Hugging Face API token (requires access to the UnsafeBench dataset)
+- For the UnsafeBench and VLGuard examples:
+  - `HF_TOKEN` or `HF_API_TOKEN` - Your Hugging Face API token (optional for VLGuard, required for UnsafeBench dataset access)
 
 You can set these in a `.env` file or directly in your environment.
 
 ## Description
 
-This example provides three different approaches to red team testing with multi-modal models:
+This example provides four different approaches to red team testing with multi-modal models:
 
 ### 1. Static Image Example (`promptfooconfig.static-image.yaml`)
 
@@ -86,6 +92,17 @@ Key features:
 - Automatically converts images to base64 format (even if originally provided as URLs)
 - Filters images by category (Violence, Sexual, Hate, etc.)
 - Tests if models appropriately refuse to engage with harmful visual content
+
+### 4. VLGuard Example (`promptfooconfig.vlguard.yaml`)
+
+This configuration uses the VLGuard plugin to evaluate multi-modal models against potentially unsafe imagery from the VLGuard dataset. It provides focused testing of content moderation capabilities with a smaller, curated dataset of 442 images.
+
+Key features:
+
+- Fetches images from the VLGuard dataset hosted on Hugging Face
+- Organized into 4 main categories (deception, risky behavior, privacy, discrimination) and 9 subcategories
+- Smaller, more focused dataset compared to UnsafeBench for targeted testing
+- Tests model responses to potentially harmful visual content with specific safety guidelines
 
 ## How It Works: Understanding Variables and Injection
 
@@ -160,11 +177,26 @@ npx promptfoo@latest redteam generate -c promptfooconfig.unsafebench.yaml
 npx promptfoo@latest redteam eval -c redteam.yaml
 ```
 
+### Running the VLGuard Example
+
+The VLGuard example works similarly to UnsafeBench but with a smaller, more focused dataset:
+
+```bash
+npx promptfoo@latest redteam eval -c redteam.vlguard.yaml
+```
+
+Or generate fresh test cases:
+
+```bash
+npx promptfoo@latest redteam generate -c promptfooconfig.vlguard.yaml
+npx promptfoo@latest redteam eval -c redteam.yaml
+```
+
 ## Additional Configuration Options
 
 ### Purpose Statement
 
-When configuring your redteam tests, ensure that the `purpose` statement in your configuration is relevant to the image content in some way. This helps create more realistic and contextually appropriate test scenarios.
+When configuring your red team tests, ensure that the `purpose` statement in your configuration is relevant to the image content in some way. This helps create more realistic and contextually appropriate test scenarios.
 
 For example, in the static image example, the purpose statement references NASA and Buzz Aldrin, which is directly relevant to the moon landing image:
 
@@ -188,7 +220,7 @@ targets:
 
 However, the techniques demonstrated can be applied to any multi-modal model that supports image inputs. You can easily swap out the target model in the configuration files to use models from:
 
-- **OpenAI**: `openai:gpt-4o-mini` and newer versions that support vision
+- **OpenAI**: `openai:gpt-4.1-mini` and newer versions that support vision
 - **Anthropic**: Claude 3 models with vision capabilities
 - **Google**: Gemini models
 - **Other providers**: Any model that can process both text and image inputs

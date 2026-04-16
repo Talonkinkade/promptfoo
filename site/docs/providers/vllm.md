@@ -1,3 +1,8 @@
+---
+sidebar_label: vllm
+description: "Achieve high-throughput LLM serving using vLLM's optimized inference engine with PagedAttention and continuous batching"
+---
+
 # vllm
 
 vllm's [OpenAI-compatible server](https://docs.vllm.ai/en/latest/getting_started/quickstart.html#openai-compatible-server) offers access to many [supported models](https://docs.vllm.ai/en/latest/models/supported_models.html) for local inference from Huggingface Transformers.

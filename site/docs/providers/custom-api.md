@@ -1,5 +1,6 @@
 ---
 sidebar_label: Custom Javascript
+description: Configure custom JavaScript providers to integrate any API or service with promptfoo's testing framework using TypeScript, CommonJS, or ESM modules
 ---
 
 # Javascript Provider
@@ -10,16 +11,17 @@ Custom Javascript providers let you create providers in JavaScript or TypeScript
 
 promptfoo supports multiple JavaScript module formats. Complete working examples are available on GitHub:
 
-- [CommonJS Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/custom-provider) - (`.js`, `.cjs`) - Uses `module.exports` and `require()`
-- [ESM Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/custom-provider-mjs) - (`.mjs`, `.js` with `"type": "module"`) - Uses `import`/`export`
-- [TypeScript Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/custom-provider-typescript) - (`.ts`) - Provides type safety with interfaces
-- [Embeddings Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/custom-provider-embeddings) (commonjs)
+- [CommonJS Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/provider-custom/basic) - (`.js`, `.cjs`) - Uses `module.exports` and `require()`
+- [ESM Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/provider-custom/mjs) - (`.mjs`, `.js` with `"type": "module"`) - Uses `import`/`export`
+- [TypeScript Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/provider-custom/typescript) - (`.ts`) - Provides type safety with interfaces
+- [Embeddings Provider](https://github.com/promptfoo/promptfoo/tree/main/examples/provider-custom/embeddings) (commonjs)
 
 ## Provider Interface
 
 At minimum, a custom provider must implement an `id` method and a `callApi` method.
 
-```javascript title="echoProvider.js"
+```javascript title="echoProvider.mjs"
+// Save as echoProvider.mjs for ES6 syntax, or echoProvider.js for CommonJS
 export default class EchoProvider {
   id = () => 'echo';
 
@@ -56,10 +58,10 @@ module.exports = class OpenAIProvider {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: this.config?.model || 'gpt-4o-mini',
+          model: this.config?.model || 'gpt-5-mini',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: this.config?.max_tokens || 1024,
-          temperature: this.config?.temperature || 0,
+          max_completion_tokens: this.config?.max_tokens || 1024,
+          temperature: this.config?.temperature || 1,
         }),
       },
     );
@@ -79,6 +81,7 @@ module.exports = class OpenAIProvider {
   // main response shown to users
   output: "Model response - can be text or structured data",
   error: "Error message if applicable",
+  prompt: "The actual prompt sent to the LLM", // Optional: reported prompt
   tokenUsage: {
     total: 100,
     prompt: 50,
@@ -86,6 +89,8 @@ module.exports = class OpenAIProvider {
   },
   cost: 0.002,
   cached: false,
+  conversationEnded: false, // Optional: set true to stop multi-turn redteam gracefully
+  conversationEndReason: 'thread_closed', // Optional reason when conversationEnded=true
   metadata: {}, // Additional data
   ...
 }
@@ -93,16 +98,60 @@ module.exports = class OpenAIProvider {
 
 ### Context Parameter
 
-The `context` parameter contains:
+The `context` parameter provides test case information and utility objects:
 
 ```javascript
 {
-  vars: {}, // Test case variables
-  prompt: {}, // Original prompt template
-  originalProvider: {}, // Used when provider is overridden
-  logger: {} // Winston logger instance
+  vars: {},              // Test case variables
+  prompt: {},            // Prompt template (raw, label, config)
+  test: {                // Full test case object
+    vars: {},
+    metadata: {
+      pluginId: '...',   // Redteam plugin (e.g. "promptfoo:redteam:harmful:hate")
+      strategyId: '...',  // Redteam strategy (e.g. "jailbreak", "prompt-injection")
+    },
+  },
+  originalProvider: {},  // Original provider when overridden
+  logger: {},            // Winston logger instance
 }
 ```
+
+For redteam evals, use `context.test.metadata.pluginId` and `context.test.metadata.strategyId` to identify which plugin and strategy generated the test case.
+
+### Reporting the Actual Prompt
+
+If your provider dynamically generates or modifies prompts, you can report the actual prompt sent to the LLM using the `prompt` field in your response. This is useful for:
+
+- Frameworks like GenAIScript that generate prompts dynamically
+- Agent frameworks that build multi-turn conversations
+- Providers that add system instructions or modify the prompt
+
+```javascript title="dynamicPromptProvider.mjs"
+export default class DynamicPromptProvider {
+  id = () => 'dynamic-prompt';
+
+  callApi = async (prompt, context) => {
+    // Generate a different prompt dynamically
+    const generatedPrompt = `System: You are helpful.\nUser: ${prompt}`;
+
+    // Call the LLM with the generated prompt
+    const response = await callLLM(generatedPrompt);
+
+    return {
+      output: response,
+      prompt: generatedPrompt, // Report what was actually sent
+    };
+  };
+}
+```
+
+The reported prompt is used for:
+
+- **Display**: Shown as "Actual Prompt Sent" in the web UI
+- **Assertions**: Prompt-based assertions like `moderation` check this value
+- **Debugging**: Helps understand what was actually sent to the LLM
+
+See the [vercel-ai-sdk example](https://github.com/promptfoo/promptfoo/tree/main/examples/integration-vercel/ai-sdk) for a complete working example.
 
 ### Two-Stage Provider
 
@@ -148,7 +197,7 @@ module.exports = class TwoStageProvider {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5-mini',
           messages: [{ role: 'user', content: prompt }],
         }),
       },
@@ -198,6 +247,32 @@ export default class TypedProvider implements ApiProvider {
     };
   }
 }
+```
+
+### TypeScript Providers in Frontend Projects
+
+Promptfoo loads TypeScript providers in Node.js, not through your frontend bundler. If your provider imports app code from a Vite, Next.js, or Webpack project, make sure the imports are also valid from Node.
+
+For path aliases such as `@/utils`, define the alias in `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  }
+}
+```
+
+Run `promptfoo eval` from the project root so the TypeScript loader can find that `tsconfig.json`.
+
+If your provider depends on bundler-only aliases, browser-only globals, CSS imports, or frontend plugins, compile or bundle the provider to JavaScript first and reference the built file:
+
+```yaml
+providers:
+  - file://dist/promptfoo-provider.js
 ```
 
 ## Additional Capabilities
@@ -274,14 +349,32 @@ const { data, cached } = await promptfoo.cache.fetchWithCache(
 
 ```yaml title="promptfooconfig.yaml"
 providers:
-  - id: file://./myProvider.js
+  - id: file://./myProvider.mjs # ES6 modules
     label: 'My Custom API' # Display name in UI
     config:
-      model: 'gpt-4o'
+      model: 'gpt-5'
       temperature: 0.7
       max_tokens: 2000
       custom_parameter: 'custom value'
+  # - id: file://./myProvider.js   # CommonJS modules
 ```
+
+### Link to Cloud Target
+
+:::info Promptfoo Cloud Feature
+Available in [Promptfoo Cloud](/docs/enterprise) deployments.
+:::
+
+Link your local provider configuration to a cloud target using `linkedTargetId`:
+
+```yaml
+providers:
+  - id: file://./myProvider.mjs
+    config:
+      linkedTargetId: 'promptfoo://provider/12345678-1234-1234-1234-123456789abc'
+```
+
+See [Linking Local Targets to Cloud](/docs/red-team/troubleshooting/linking-targets/) for setup instructions.
 
 ### Multiple Instances
 

@@ -1,30 +1,37 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 description: 'Claude Thinking Example'
-
 prompts:
-  - '{{question}}'
-
+  - file://prompts.txt
 providers:
-  - id: anthropic:claude-3-7-sonnet-20250219
+  - id: anthropic:claude-sonnet-4-6
     config:
-      max_tokens: 8192 # Must be greater than budget_tokens
+      stream: true # Required for thinking operations
       thinking:
         type: 'enabled'
-        budget_tokens: 4096
-  # AWS Bedrock (requires model access to be enabled in your AWS account)
-  - id: bedrock:us.anthropic.claude-3-7-sonnet-20250219-v1:0
+        budget_tokens: 16000
+      max_tokens: 32000
+  - id: anthropic:messages:claude-sonnet-4-6
     config:
-      max_tokens: 8192 # Must be greater than budget_tokens
+      stream: true # Required for thinking operations
       thinking:
         type: 'enabled'
-        budget_tokens: 4096
-      region: us-west-2
+        budget_tokens: 16000
+      max_tokens: 32000
+  # Claude Haiku 4.5 via AWS Bedrock
+  - id: bedrock:us.anthropic.claude-haiku-4-5-20251001-v1:0
+    config:
+      temperature: 1 # Required when thinking is enabled on Bedrock
+      stream: true # Required for thinking operations
+      thinking:
+        type: 'enabled'
+        budget_tokens: 16000
+      max_tokens: 32000
 
 tests:
   - vars:
       question: |
-        You have 8 identical balls, but one is slightly heavier than the others. 
-        Using a balance scale, what is the minimum number of weighings needed to 
+        You have 8 identical balls, but one is slightly heavier than the others.
+        Using a balance scale, what is the minimum number of weighings needed to
         find the heavier ball?
     assert:
       - type: llm-rubric
@@ -33,8 +40,8 @@ tests:
 
   - vars:
       question: |
-        A train leaves Boston at 8:00 AM traveling west at 100 mph. Another train 
-        leaves Chicago at 10:00 AM traveling east at 120 mph. If the distance 
+        A train leaves Boston at 8:00 AM traveling west at 100 mph. Another train
+        leaves Chicago at 10:00 AM traveling east at 120 mph. If the distance
         between Boston and Chicago is 1000 miles, at what time will the trains meet?
     assert:
       - type: llm-rubric

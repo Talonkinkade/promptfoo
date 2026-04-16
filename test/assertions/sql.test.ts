@@ -1,6 +1,7 @@
-/* eslint-disable jest/no-commented-out-tests */
+import { describe, expect, it } from 'vitest';
 import { handleIsSql } from '../../src/assertions/sql';
-import type { Assertion, AssertionParams, GradingResult } from '../../src/types';
+
+import type { Assertion, AssertionParams, GradingResult } from '../../src/types/index';
 
 const assertion: Assertion = {
   type: 'is-sql',
@@ -77,29 +78,88 @@ describe('is-sql assertion', () => {
       });
     });
 
-    /**
-     * Catches an incorrect output from node-sql-parser package
-     * The parser cannot identify the syntax error: missing comma between column names
-     */
-    // it('should fail when the output string is an invalid SQL statement', () => {
-    //   const renderedValue = undefined;
-    //   const outputString = 'SELECT first_name last_name FROM employees';
-    //   const result = testFunction(renderedValue, outputString, false);
-    //   expect(result.pass).toBe(false);
-    //   expect(result.reason).toBe('SQL statement does not conform to the provided MySQL database syntax.');
-    // });
+    it('should fail when the SQL statement is missing a comma between columns', async () => {
+      const renderedValue = undefined;
+      const outputString = 'SELECT first_name last_name FROM employees';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+        assertion,
+      });
+    });
 
-    /**
-     * Catches an incorrect output from node-sql-parser package
-     * The parser cannot identify the syntax error: misuse of backticks (`)
-     */
-    // it('should fail when the output string is an invalid SQL statement', () => {
-    //   const renderedValue = undefined;
-    //   const outputString = 'SELECT * FROM `employees`';
-    //   const result = testFunction(renderedValue, outputString, false);
-    //   expect(result.pass).toBe(false);
-    //   expect(result.reason).toBe('SQL statement does not conform to the provided MySQL database syntax.');
-    // });
+    it('should fail when the SQL statement contains mismatched backticks', async () => {
+      const renderedValue = undefined;
+      const outputString = 'SELECT * FROM `employees';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toMatchObject({
+        pass: false,
+        score: 0,
+        assertion,
+      });
+      expect(result.reason).toContain(
+        'SQL statement does not conform to the provided MySQL database syntax.',
+      );
+    });
+
+    it('should pass when the SQL statement contains properly matched backticks', async () => {
+      const renderedValue = undefined;
+      const outputString = 'SELECT * FROM `employees` WHERE `id` = 1';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion,
+      });
+    });
+
+    it('should fail when the SQL statement contains multiple mismatched backticks', async () => {
+      const renderedValue = undefined;
+      const outputString = 'SELECT `id, `name FROM `users';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toMatchObject({
+        pass: false,
+        score: 0,
+      });
+    });
+
+    it('should fail when SELECT has invalid column list format', async () => {
+      const renderedValue = undefined;
+      const outputString = 'SELECT col1 col2 col3 FROM table1';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toMatchObject({
+        pass: false,
+        score: 0,
+      });
+    });
   });
 
   // ------------------------------------------ Database Specific Syntax Tests ------------------------------------------- //
@@ -161,19 +221,43 @@ describe('is-sql assertion', () => {
       });
     });
 
-    /**
-     * Catches an incorrect output from node-sql-parser package
-     * The parser cannot differentiate certain syntax between MySQL and PostgreSQL
-     */
-    // it('should fail if the output SQL statement conforms to PostgreSQL but not MySQL', () => {
-    //   const renderedValue = {
-    //     databaseType: 'MySQL',
-    //   };
-    //   const outputString = `SELECT generate_series(1, 10);`;
-    //   const result = testFunction(renderedValue, outputString, false);
-    //   expect(result.pass).toBe(false);
-    //   expect(result.reason).toBe('SQL statement does not conform to the provided MySQL database syntax.');
-    // });
+    it('should fail if the output SQL statement uses PostgreSQL-only syntax on MySQL', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+      };
+      const outputString = 'SELECT generate_series(1, 10);';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+        assertion,
+      });
+    });
+
+    it('should fail when using generate_series in MySQL even with valid syntax', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+      };
+      const outputString = 'SELECT * FROM table_name WHERE id IN (SELECT generate_series(1, 5));';
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: false,
+        score: 0,
+        reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+        assertion,
+      });
+    });
   });
 
   // ------------------------------------------- White Table/Column List Tests ------------------------------------------- //
@@ -193,7 +277,7 @@ describe('is-sql assertion', () => {
       expect(result).toEqual({
         pass: false,
         score: 0,
-        reason: `SQL validation failed: authority = 'select::null::employees' is required in table whiteList to execute SQL = 'SELECT * FROM employees'.`,
+        reason: `SQL references unauthorized table(s). Found: [select::null::employees]. Allowed: [(select|update|insert|delete)::null::departments].`,
         assertion,
       });
     });
@@ -233,7 +317,7 @@ describe('is-sql assertion', () => {
       expect(result).toEqual({
         pass: false,
         score: 0,
-        reason: `SQL validation failed: authority = 'select::null::id' is required in column whiteList to execute SQL = 'SELECT id FROM t'.`,
+        reason: `SQL references unauthorized column(s). Found: [select::null::id]. Allowed: [select::null::name, update::null::id].`,
         assertion,
       });
     });
@@ -258,39 +342,160 @@ describe('is-sql assertion', () => {
       });
     });
 
-    /**
-     * Catches an incorrect output from node-sql-parser package
-     * Error message: message: "authority = 'update::null::id' is required in column whiteList to execute SQL = 'UPDATE a SET id = 1'"
-     * issue: In this test case, the 'whiteListCheck' function in node-sql-parser requires an explicit 'update::null::id'
-     * in the whitelist to allow SQL statement like `UPDATE a SET id = 1`, despite the presence
-     * of rule `update::a::id`
-     */
-    // it('should pass if the output SQL statement does not violate allowedColumns', () => {
-    //   const renderedValue = {
-    //     databaseType: 'MySQL',
-    //     allowedColumns: ['update::a::id'],
-    //   };
-    //   const outputString = `UPDATE a SET id = 1`;
-    //   const result = testFunction(renderedValue, outputString, false);
-    //   expect(result.pass).toBe(true);
-    //   expect(result.reason).toBe('Assertion passed');
-    // });
+    it('should pass when update column whitelist references table name', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+        allowedColumns: ['update::a::id'],
+      };
+      const outputString = `UPDATE a SET id = 1`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion,
+      });
+    });
 
-    /**
-     * Similar issue: the error message is Error: authority = 'select::null::id' is required
-     * in column whiteList to execute SQL = 'UPDATE employee SET salary = 50000 WHERE id = 1'
-     */
-    // it('should pass if the output SQL statement does not violate allowedColumns', () => {
-    //   const renderedValue = {
-    //     databaseType: 'MySQL',
-    //     allowedColumns: ['update::employee::salary','select::employee::id'],
-    //   };
-    //   const outputString = `UPDATE employee SET salary = 50000 WHERE id = 1`;
-    //   const result = testFunction(renderedValue, outputString, false);
-    //   expect(result.pass).toBe(true);
-    //   expect(result.reason).toBe('Assertion passed');
-    // });
+    it('should pass when multiple column authorities are provided for update', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+        allowedColumns: ['update::employee::salary', 'select::employee::id'],
+      };
+      const outputString = `UPDATE employee SET salary = 50000 WHERE id = 1`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion,
+      });
+    });
+
+    it('should pass with normalized whitelist entries', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+        allowedColumns: ['select::employees::name'],
+      };
+      const outputString = `SELECT name FROM employees`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion,
+      });
+    });
+
+    // Issue #1491: Verify correct behavior when table name differs from expected
+    it('should fail when SQL uses wrong table name (issue #1491)', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+        allowedTables: ['select::null::data_table'],
+      };
+      // LLM generated SQL with "data" instead of "data_table"
+      const outputString = `SELECT * FROM data WHERE id = 1`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result.pass).toBe(false);
+      expect(result.reason).toContain('SQL references unauthorized table(s)');
+      expect(result.reason).toContain('select::null::data');
+      expect(result.reason).toContain('select::null::data_table');
+    });
+
+    it('should pass when SQL correctly uses allowed table name', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+        allowedTables: ['select::null::data_table'],
+      };
+      const outputString = `SELECT * FROM data_table WHERE id = 1`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion,
+      });
+    });
+
+    it('should handle double-quoted table names in PostgreSQL mode', async () => {
+      const renderedValue = {
+        databaseType: 'PostgreSQL',
+        allowedTables: ['select::null::data_table'],
+      };
+      const outputString = `SELECT * FROM "data_table" WHERE id = 1`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result).toEqual({
+        pass: true,
+        score: 1,
+        reason: 'Assertion passed',
+        assertion,
+      });
+    });
+
+    it('should fail when double-quoted table name differs from allowed', async () => {
+      const renderedValue = {
+        databaseType: 'PostgreSQL',
+        allowedTables: ['select::null::data_table'],
+      };
+      // Using "data" instead of "data_table"
+      const outputString = `SELECT * FROM "data" WHERE id = 1`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result.pass).toBe(false);
+      expect(result.reason).toContain('SQL references unauthorized table(s)');
+      expect(result.reason).toContain('select::null::data');
+    });
+
+    it('should handle multiple tables with some unauthorized', async () => {
+      const renderedValue = {
+        databaseType: 'MySQL',
+        allowedTables: ['select::null::users'],
+      };
+      // Query joins with an unauthorized table
+      const outputString = `SELECT u.name, p.title FROM users u, posts p WHERE u.id = p.user_id`;
+      const result: GradingResult = await handleIsSql({
+        assertion,
+        renderedValue,
+        outputString,
+        inverse: false,
+      } as AssertionParams);
+      expect(result.pass).toBe(false);
+      expect(result.reason).toContain('SQL references unauthorized table(s)');
+      expect(result.reason).toContain('select::null::posts');
+    });
   });
-
-  /* eslint-enable jest/no-commented-out-tests */
 });

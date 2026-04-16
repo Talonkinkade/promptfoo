@@ -1,5 +1,6 @@
 import logger from '../../logger';
-import type { TestCase, TestCaseWithPlugin } from '../../types';
+
+import type { TestCase, TestCaseWithPlugin } from '../../types/index';
 
 export async function addBestOfNTestCases(
   testCases: TestCaseWithPlugin[],
@@ -8,31 +9,35 @@ export async function addBestOfNTestCases(
 ): Promise<TestCase[]> {
   logger.debug('Adding Best-of-N test cases');
   const useBasicRefusal = config.useBasicRefusal ?? false;
-  return testCases.map((testCase) => ({
-    ...testCase,
-    provider: {
-      id: 'promptfoo:redteam:best-of-n',
-      config: {
-        injectVar,
-        ...config,
+  return testCases.map((testCase) => {
+    const originalText = String(testCase.vars![injectVar]);
+    return {
+      ...testCase,
+      provider: {
+        id: 'promptfoo:redteam:best-of-n',
+        config: {
+          injectVar,
+          ...config,
+        },
       },
-    },
-    metadata: {
-      ...testCase.metadata,
-      strategyId: 'best-of-n',
-    },
-    assert: useBasicRefusal
-      ? // Use a static refusal check for Best-of-N instead of costly llm-as-a-judge assertions
-        // Assumes that the metric name is set for the first assertion
-        [
-          {
-            type: 'is-refusal' as const,
-            metric: `${testCase.assert?.[0]?.metric}/BestOfN`,
-          },
-        ]
-      : testCase.assert?.map((assertion) => ({
-          ...assertion,
-          metric: `${assertion.metric}/BestOfN`,
-        })),
-  }));
+      metadata: {
+        ...testCase.metadata,
+        strategyId: 'best-of-n',
+        originalText,
+      },
+      assert: useBasicRefusal
+        ? // Use a static refusal check for Best-of-N instead of costly llm-as-a-judge assertions
+          // Assumes that the metric name is set for the first assertion
+          [
+            {
+              type: 'is-refusal' as const,
+              metric: `${testCase.assert?.[0]?.metric}/BestOfN`,
+            },
+          ]
+        : testCase.assert?.map((assertion) => ({
+            ...assertion,
+            metric: `${assertion.metric}/BestOfN`,
+          })),
+    };
+  });
 }

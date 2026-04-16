@@ -1,3 +1,8 @@
+---
+sidebar_label: llamafile
+description: 'Deploy LLMs as portable single-file executables using llamafile for offline testing with OpenAI-compatible API endpoints'
+---
+
 # llamafile
 
 Llamafile has an [OpenAI-compatible HTTP endpoint](https://github.com/Mozilla-Ocho/llamafile?tab=readme-ov-file#json-api-quickstart), so you can override the [OpenAI provider](/docs/providers/openai/) to talk to your llamafile server.

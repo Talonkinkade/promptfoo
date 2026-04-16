@@ -1,14 +1,79 @@
 import dedent from 'dedent';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ResultFailureReason } from '../../src/types/index';
 import {
-  extractJsonObjects,
-  isValidJson,
-  safeJsonStringify,
-  orderKeys,
   convertSlashCommentsToHash,
   extractFirstJsonObject,
+  extractJsonObjects,
+  getAjv,
+  isValidJson,
+  orderKeys,
+  resetAjv,
+  safeJsonStringify,
+  summarizeEvaluateResultForLogging,
 } from '../../src/util/json';
+import { createEvaluateResult } from '../factories/eval';
+import { createAtomicTestCase, createPrompt } from '../factories/testSuite';
+
+import type { EvaluateResult } from '../../src/types/index';
 
 describe('json utilities', () => {
+  describe('getAjv', () => {
+    beforeAll(() => {
+      process.env.NODE_ENV = 'test';
+    });
+
+    beforeEach(() => {
+      delete process.env.PROMPTFOO_DISABLE_AJV_STRICT_MODE;
+      resetAjv();
+    });
+
+    afterEach(() => {
+      delete process.env.PROMPTFOO_DISABLE_AJV_STRICT_MODE;
+    });
+
+    it('should create an Ajv instance with default options', () => {
+      const ajv = getAjv();
+      expect(ajv).toBeDefined();
+      expect(ajv.opts.strictSchema).toBe(true);
+    });
+
+    it('should disable strict mode when PROMPTFOO_DISABLE_AJV_STRICT_MODE is set', () => {
+      process.env.PROMPTFOO_DISABLE_AJV_STRICT_MODE = 'true';
+      const ajv = getAjv();
+      expect(ajv.opts.strictSchema).toBe(false);
+    });
+
+    it('should add formats to the Ajv instance', () => {
+      const ajv = getAjv();
+      expect(ajv.formats).toBeDefined();
+      expect(Object.keys(ajv.formats)).not.toHaveLength(0);
+    });
+
+    it('should reuse the same instance on subsequent calls', () => {
+      const firstInstance = getAjv();
+      const secondInstance = getAjv();
+      expect(firstInstance).toBe(secondInstance);
+    });
+
+    it('should reset the instance when resetAjv is called', () => {
+      const firstInstance = getAjv();
+      resetAjv();
+      const secondInstance = getAjv();
+      expect(firstInstance).not.toBe(secondInstance);
+    });
+
+    it('should only allow resetAjv to be called in test environment', () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'production';
+        expect(() => resetAjv()).toThrow('resetAjv can only be called in test environment');
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    });
+  });
+
   describe('isValidJson', () => {
     it('returns true for valid JSON', () => {
       expect(isValidJson('{"key": "value"}')).toBe(true);
@@ -110,6 +175,13 @@ describe('json utilities', () => {
       expect(safeJsonStringify(obj)).toBe('{"a":{"b":{}}}');
     });
 
+    it('preserves shared non-circular references', () => {
+      const shared = { value: 'shared' };
+      expect(safeJsonStringify({ a: shared, b: shared, c: [shared] })).toBe(
+        '{"a":{"value":"shared"},"b":{"value":"shared"},"c":[{"value":"shared"}]}',
+      );
+    });
+
     it('preserves non-circular nested structures', () => {
       const nested = { a: { b: { c: 1 } }, d: [1, 2, { e: 3 }] };
       expect(JSON.parse(safeJsonStringify(nested) as string)).toEqual(nested);
@@ -169,7 +241,11 @@ describe('json utilities', () => {
     it('should handle incomplete JSON', () => {
       const input = `{
   "incomplete": "object"`;
-      expect(extractJsonObjects(input)).toEqual([]);
+      expect(extractJsonObjects(input)).toEqual([
+        {
+          incomplete: 'object',
+        },
+      ]);
     });
 
     it('should handle string containing incomplete JSON', () => {
@@ -189,6 +265,9 @@ describe('json utilities', () => {
             nested: 'value2',
           },
           key3: 'value3',
+        },
+        {
+          incomplete: 'object',
         },
       ]);
     });
@@ -355,6 +434,23 @@ describe('json utilities', () => {
         inputs.forEach((input, i) => {
           expect(convertSlashCommentsToHash(input)).toBe(expected[i]);
         });
+      });
+
+      it('should not treat URL schemes as comments', () => {
+        const inputs = [
+          'url: http://example.com/path',
+          'url: https://example.com/path',
+          'url: http://example.com//double-slash',
+        ];
+        inputs.forEach((input) => {
+          expect(convertSlashCommentsToHash(input)).toBe(input);
+        });
+      });
+
+      it('should still convert comments after URLs', () => {
+        const input = 'url: http://example.com/path // trailing comment';
+        const expected = 'url: http://example.com/path # trailing comment';
+        expect(convertSlashCommentsToHash(input)).toBe(expected);
       });
     });
 
@@ -550,6 +646,182 @@ describe('json utilities', () => {
       expect(() => extractFirstJsonObject(input)).toThrow(
         'Expected a JSON object, but got "no json here"',
       );
+    });
+  });
+
+  describe('summarizeEvaluateResultForLogging', () => {
+    // Create test EvaluateResult with reasonable data size
+    const createTestEvaluateResult = (): EvaluateResult =>
+      createEvaluateResult({
+        id: 'test-eval-result',
+        success: false,
+        score: 0.5,
+        error: 'Test error',
+        failureReason: ResultFailureReason.ERROR,
+        latencyMs: 100,
+        promptId: 'test-prompt-id',
+        provider: { id: 'test-provider', label: 'Test Provider' },
+        response: {
+          output: 'This is a test output that is reasonably sized for testing purposes.',
+          error: undefined,
+          cached: false,
+          cost: 0.01,
+          tokenUsage: { total: 1000, prompt: 500, completion: 500 },
+          metadata: {
+            model: 'gpt-4',
+            timestamp: '2024-01-01T00:00:00Z',
+            additionalData: 'Some additional metadata for testing',
+          },
+        },
+        testCase: createAtomicTestCase({
+          description: 'Test case with regular data',
+          vars: { input: 'test input', context: 'test context' },
+        }),
+        prompt: createPrompt('Test prompt', {
+          display: 'Test Prompt Display',
+          label: 'Test Prompt Label',
+        }),
+        vars: {
+          userInput: 'test user input',
+          systemPrompt: 'test system prompt',
+        },
+      });
+
+    it('should throw TypeError for null or undefined input', () => {
+      expect(() => summarizeEvaluateResultForLogging(null as any)).toThrow(TypeError);
+      expect(() => summarizeEvaluateResultForLogging(undefined as any)).toThrow(TypeError);
+    });
+
+    it('should create a safe summary of evaluation results', () => {
+      const testResult = createTestEvaluateResult();
+      const summary = summarizeEvaluateResultForLogging(testResult);
+
+      expect(summary.id).toBe('test-eval-result');
+      expect(summary.testIdx).toBe(0);
+      expect(summary.promptIdx).toBe(0);
+      expect(summary.success).toBe(false);
+      expect(summary.score).toBe(0.5);
+      expect(summary.error).toBe('Test error');
+      expect(summary.failureReason).toBe(ResultFailureReason.ERROR);
+
+      expect(summary.provider?.id).toBe('test-provider');
+      expect(summary.provider?.label).toBe('Test Provider');
+
+      expect(summary.response?.output).toBeDefined();
+      expect(summary.response?.cached).toBe(false);
+      expect(summary.response?.cost).toBe(0.01);
+      expect(summary.response?.tokenUsage).toEqual({
+        total: 1000,
+        prompt: 500,
+        completion: 500,
+      });
+
+      expect(summary.response?.metadata?.keys).toContain('model');
+      expect(summary.response?.metadata?.keys).toContain('timestamp');
+      expect(summary.response?.metadata?.keys).toContain('additionalData');
+      expect(summary.response?.metadata?.keyCount).toBe(3);
+
+      expect(summary.testCase?.description).toBe('Test case with regular data');
+      expect(summary.testCase?.vars).toEqual(['input', 'context']);
+    });
+
+    it('should handle custom options', () => {
+      const testResult = createTestEvaluateResult();
+      const summary = summarizeEvaluateResultForLogging(testResult, 20, false);
+
+      expect(summary.response?.output?.length).toBeLessThanOrEqual(35); // 20 + '...[truncated]'
+      expect(summary.response?.metadata).toBeUndefined();
+    });
+
+    it('should handle EvaluateResult with minimal data', () => {
+      const minimalResult: EvaluateResult = createEvaluateResult({
+        id: 'minimal-result',
+        testIdx: 1,
+        promptIdx: 2,
+        score: 1.0,
+        latencyMs: 50,
+        promptId: 'minimal-prompt-id',
+        provider: { id: 'minimal-provider' },
+        prompt: createPrompt('test prompt', { label: 'Test Prompt' }),
+      });
+
+      const summary = summarizeEvaluateResultForLogging(minimalResult);
+
+      expect(summary.id).toBe('minimal-result');
+      expect(summary.success).toBe(true);
+      expect(summary.score).toBe(1.0);
+      expect(summary.provider?.id).toBe('minimal-provider');
+    });
+
+    it('should handle long output strings by truncating them', () => {
+      const longOutput = 'A'.repeat(1000);
+      const resultWithLongOutput: EvaluateResult = {
+        ...createTestEvaluateResult(),
+        response: {
+          output: longOutput,
+          cached: false,
+        },
+      };
+
+      const summary = summarizeEvaluateResultForLogging(resultWithLongOutput, 100);
+
+      expect(summary.response?.output?.length).toBeLessThanOrEqual(115); // 100 + '...[truncated]'
+      expect(summary.response?.output).toContain('...[truncated]');
+    });
+
+    it('should be safely stringifiable', () => {
+      const testResult = createTestEvaluateResult();
+      const summary = summarizeEvaluateResultForLogging(testResult);
+
+      expect(() => {
+        const result = safeJsonStringify(summary);
+        expect(result).toBeDefined();
+        expect(typeof result).toBe('string');
+      }).not.toThrow();
+    });
+
+    it('should handle non-string output values', () => {
+      const resultWithObjectOutput: EvaluateResult = {
+        ...createTestEvaluateResult(),
+        response: {
+          output: { complexObject: 'value', nested: { data: 'test' } },
+          cached: false,
+        },
+      };
+
+      const summary = summarizeEvaluateResultForLogging(resultWithObjectOutput);
+
+      expect(summary.response?.output).toBe('[object Object]');
+    });
+
+    describe('Integration test - evaluator error logging scenario', () => {
+      it('should handle the exact scenario from evaluator.ts without throwing', () => {
+        const testEvalResult = createTestEvaluateResult();
+        const mockError = new Error('Database connection failed');
+
+        expect(() => {
+          const resultSummary = summarizeEvaluateResultForLogging(testEvalResult);
+          const logMessage = `Error saving result: ${mockError} ${safeJsonStringify(resultSummary)}`;
+
+          expect(logMessage).toBeDefined();
+          expect(logMessage).toContain('Error saving result: Error: Database connection failed');
+          expect(logMessage).toContain('"id":"test-eval-result"');
+          expect(logMessage).toContain('"success":false');
+          expect(logMessage.length).toBeLessThan(5000);
+        }).not.toThrow();
+      });
+
+      it('should perform efficiently', () => {
+        const testResult = createTestEvaluateResult();
+
+        const start = Date.now();
+        const summary = summarizeEvaluateResultForLogging(testResult);
+        const stringified = safeJsonStringify(summary);
+        const duration = Date.now() - start;
+
+        expect(duration).toBeLessThan(100);
+        expect(stringified).toBeDefined();
+      });
     });
   });
 });

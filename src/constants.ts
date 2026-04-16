@@ -1,32 +1,32 @@
-import packageJson from '../package.json';
-import { getEnvString } from './envars';
+import { getEnvInt, getEnvString } from './envars';
 
-export const VERSION = packageJson.version;
+export * from './providers/constants';
+export { VERSION } from './version';
 
 export const DEFAULT_QUERY_LIMIT = 100;
 
-// We use process.env in this file because it's imported by the next.js server as well.
+export const DEFAULT_MAX_CONCURRENCY = 4;
+
+// Default API base URL used for sharing and other API operations
+export const DEFAULT_API_BASE_URL = 'https://api.promptfoo.app';
 
 // This is used for sharing evals.
-export const SHARE_API_BASE_URL =
-  // TODO(ian): Backwards compatibility, 2024-04-01
-  process.env.NEXT_PUBLIC_PROMPTFOO_REMOTE_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_PROMPTFOO_BASE_URL ||
-  process.env.PROMPTFOO_REMOTE_API_BASE_URL ||
-  `https://api.promptfoo.app`;
+export function getShareApiBaseUrl(): string {
+  return getEnvString('PROMPTFOO_REMOTE_API_BASE_URL') || DEFAULT_API_BASE_URL;
+}
 
-export const DEFAULT_SHARE_VIEW_BASE_URL = getEnvString(
-  'PROMPTFOO_SHARING_APP_BASE_URL',
-  `https://promptfoo.app`,
-);
+export function getDefaultShareViewBaseUrl(): string {
+  return getEnvString('PROMPTFOO_SHARING_APP_BASE_URL', `https://promptfoo.app`);
+}
 
 // This is used for creating shared eval links.
-export const SHARE_VIEW_BASE_URL =
-  process.env.NEXT_PUBLIC_PROMPTFOO_BASE_URL ||
-  process.env.PROMPTFOO_REMOTE_APP_BASE_URL ||
-  DEFAULT_SHARE_VIEW_BASE_URL;
+export function getShareViewBaseUrl(): string {
+  return getEnvString('PROMPTFOO_REMOTE_APP_BASE_URL') || getDefaultShareViewBaseUrl();
+}
 
-export const DEFAULT_PORT = Number.parseInt(process.env.API_PORT || '15500');
+export function getDefaultPort(): number {
+  return getEnvInt('API_PORT', 15500);
+}
 
 // Maximum width for terminal outputs.
 export const TERMINAL_MAX_WIDTH =
@@ -35,3 +35,12 @@ export const TERMINAL_MAX_WIDTH =
     : 120;
 
 export const CLOUD_PROVIDER_PREFIX = 'promptfoo://provider/';
+
+// Re-export HUMAN_ASSERTION_TYPE from providers/constants for backward compatibility
+// (providers/constants is browser-safe, constants.ts is not due to envars import)
+export { HUMAN_ASSERTION_TYPE, type HumanAssertionType } from './providers/constants';
+
+export const CONSENT_ENDPOINT = 'https://api.promptfoo.dev/consent';
+export const EVENTS_ENDPOINT = 'https://a.promptfoo.app';
+
+export const R_ENDPOINT = 'https://r.promptfoo.app/';

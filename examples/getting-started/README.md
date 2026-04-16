@@ -1,4 +1,11 @@
-# Getting Started Example
+# getting-started (Getting Started Example)
+
+You can run this example with:
+
+```bash
+npx promptfoo@latest init --example getting-started
+cd getting-started
+```
 
 This is a simple example that demonstrates the basic functionality of promptfoo. It tests two different translation prompts across multiple language models.
 
@@ -9,6 +16,8 @@ This is a simple example that demonstrates the basic functionality of promptfoo.
 ```bash
 export OPENAI_API_KEY=your-key-here
 ```
+
+_Tip: you can also put this key in a `.env` file. Be sure not to commit it to git._
 
 2. Run the evaluation:
 
@@ -21,7 +30,7 @@ promptfoo eval
 This example:
 
 - Tests two different ways to phrase a translation prompt
-- Compares outputs between GPT-4o and GPT-4o-mini
+- Compares outputs between GPT-5.2 and GPT-5 Mini
 - Uses two test cases with different languages and inputs
 
 The configuration in `promptfooconfig.yaml` shows:

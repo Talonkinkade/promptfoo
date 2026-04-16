@@ -1,12 +1,13 @@
 import async from 'async';
-import { SingleBar, Presets } from 'cli-progress';
+import { Presets, SingleBar } from 'cli-progress';
 import { fetchWithCache } from '../../cache';
 import { getUserEmail } from '../../globalConfig/accounts';
 import logger from '../../logger';
 import { REQUEST_TIMEOUT_MS } from '../../providers/shared';
-import type { TestCase } from '../../types';
 import invariant from '../../util/invariant';
 import { getRemoteGenerationUrl, neverGenerateRemote } from '../remoteGeneration';
+
+import type { TestCase } from '../../types/index';
 
 async function generateLikertPrompts(
   testCases: TestCase[],
@@ -24,6 +25,7 @@ async function generateLikertPrompts(
           format:
             'Likert Jailbreak Generation {bar} {percentage}% | ETA: {eta}s | {value}/{total} cases',
           hideCursor: true,
+          gracefulExit: true,
         },
         Presets.shades_classic,
       );
@@ -46,7 +48,12 @@ async function generateLikertPrompts(
         email: getUserEmail(),
       };
 
-      const { data } = await fetchWithCache(
+      interface LikertGenerationResponse {
+        error?: string;
+        modifiedPrompts?: string[];
+      }
+
+      const { data } = await fetchWithCache<LikertGenerationResponse>(
         getRemoteGenerationUrl(),
         {
           method: 'POST',
@@ -63,27 +70,34 @@ async function generateLikertPrompts(
           data,
         )}`,
       );
-      if (data.error) {
+      // Runtime check is necessary because both properties are optional in LikertGenerationResponse.
+      // The remote API could return {} or {error: "..."} without modifiedPrompts, and line 80 directly
+      // accesses data.modifiedPrompts.map() which would throw if undefined.
+      if (data.error || !data.modifiedPrompts) {
         logger.error(`[jailbreak:likert] Error in Likert generation: ${data.error}}`);
         logger.debug(`[jailbreak:likert] Response: ${JSON.stringify(data)}`);
         return;
       }
 
-      const likertTestCases = data.modifiedPrompts.map((modifiedPrompt: string) => ({
-        ...testCase,
-        vars: {
-          ...testCase.vars,
-          [injectVar]: modifiedPrompt,
-        },
-        assert: testCase.assert?.map((assertion) => ({
-          ...assertion,
-          metric: `${assertion.metric}/Likert`,
-        })),
-        metadata: {
-          ...testCase.metadata,
-          strategyId: 'jailbreak:likert',
-        },
-      }));
+      const likertTestCases = data.modifiedPrompts.map((modifiedPrompt: string) => {
+        const originalText = String(testCase.vars![injectVar]);
+        return {
+          ...testCase,
+          vars: {
+            ...testCase.vars,
+            [injectVar]: modifiedPrompt,
+          },
+          assert: testCase.assert?.map((assertion) => ({
+            ...assertion,
+            metric: `${assertion.metric}/Likert`,
+          })),
+          metadata: {
+            ...testCase.metadata,
+            strategyId: 'jailbreak:likert',
+            originalText,
+          },
+        };
+      });
 
       allResults = allResults.concat(likertTestCases);
 

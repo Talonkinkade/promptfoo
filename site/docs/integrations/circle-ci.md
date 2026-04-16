@@ -1,8 +1,9 @@
 ---
 sidebar_label: CircleCI
+description: Automate LLM testing in CircleCI pipelines with promptfoo. Configure caching, API keys, and evaluation workflows to validate prompts and models in CI/CD environments.
 ---
 
-# Setting up promptfoo with CircleCI
+# Setting up Promptfoo with CircleCI
 
 This guide shows how to integrate promptfoo's LLM evaluation into your CircleCI pipeline. This allows you to automatically test your prompts and models whenever changes are made to your repository.
 
@@ -18,12 +19,12 @@ This guide shows how to integrate promptfoo's LLM evaluation into your CircleCI 
 
 Create a `.circleci/config.yml` file in your repository. Here's a basic configuration that installs promptfoo and runs evaluations:
 
-    ```yaml:/.circleci/config.yml
+    ```yaml
     version: 2.1
     jobs:
       evaluate_prompts:
         docker:
-          - image: cimg/node:18.0.0
+          - image: cimg/node:20.0.0
         steps:
           - checkout
 
@@ -132,13 +133,11 @@ After the evaluation runs, you'll see:
 Common issues and solutions:
 
 1. **Cache not working:**
-
    - Verify the cache key matches your configuration
    - Check that the cache path exists
    - Ensure file permissions are correct
 
 2. **API key errors:**
-
    - Confirm environment variables are set in CircleCI
    - Check for typos in variable names
    - Verify API key permissions

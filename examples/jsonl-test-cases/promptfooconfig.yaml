@@ -1,8 +1,0 @@
-prompts:
-  - 'Translate the following text to {{target_language}}: {{text}}'
-
-providers:
-  # Just repeats the markdown back to us
-  - echo
-
-tests: file://cases.jsonl

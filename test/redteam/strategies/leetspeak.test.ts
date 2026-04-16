@@ -1,5 +1,7 @@
+import { describe, expect, it } from 'vitest';
 import { addLeetspeak } from '../../../src/redteam/strategies/leetspeak';
-import type { TestCase } from '../../../src/types';
+
+import type { TestCase } from '../../../src/types/index';
 
 describe('addLeetspeak', () => {
   const mockTestCases: TestCase[] = [
@@ -18,6 +20,7 @@ describe('addLeetspeak', () => {
     expect(result[0].vars?.query).toBe('H3110, w0r1d!');
     expect(result[0].metadata).toEqual({
       strategyId: 'leetspeak',
+      originalText: 'Hello, world!',
     });
   });
 

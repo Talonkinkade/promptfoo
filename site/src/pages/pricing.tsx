@@ -1,5 +1,8 @@
 import React from 'react';
+
+import Head from '@docusaurus/Head';
 import Link from '@docusaurus/Link';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import CheckIcon from '@mui/icons-material/Check';
 import Layout from '@theme/Layout';
 import clsx from 'clsx';
@@ -9,7 +12,7 @@ function PricingHeader() {
   return (
     <header className={styles.pricingHeader}>
       <h1>LLM security and testing for teams of all sizes</h1>
-      <p>Choose the plan that's right for your team</p>
+      <p>Choose the plan that's right for your team.</p>
     </header>
   );
 }
@@ -19,11 +22,11 @@ function PricingTable() {
     {
       name: 'Community',
       price: 'Free Forever',
-      description: 'Our open-source tool, perfect for individual developers and small teams',
+      description: 'Our open-source tool, perfect for individual developers and small teams.',
       features: [
         'All LLM evaluation features',
         'All model providers and integrations',
-        'No usage limits',
+        'Red teaming (10k probes/month)',
         'Custom integration with your own app',
         //'Data visualizations',
         //'Dataset generation',
@@ -38,30 +41,38 @@ function PricingTable() {
     {
       name: 'Enterprise',
       price: 'Custom',
-      description: 'For teams that need advanced features and cloud-based support',
+      description: (
+        <>
+          For teams that need advanced features. <Link to="/docs/enterprise/">Learn more</Link>
+        </>
+      ),
       features: [
         'All Community features',
+        'Custom red teaming limits',
         'Team sharing & collaboration',
         'Continuous monitoring',
         'Centralized security/compliance dashboard',
-        'Customized red teaming plugins',
-        'SSO and Access Control',
-        'Cloud deployment',
+        'Customizable attack profiles and target settings',
+        'SSO and granular permission profiles',
+        'Promptfoo API access',
+        'Managed cloud deployment',
+        'Professional services support',
         'Priority support & SLA guarantees',
       ],
       cta: 'Schedule Demo',
-      ctaLink: 'https://cal.com/team/promptfoo/intro2',
+      ctaLink: '/contact/',
       highlighted: true,
     },
     {
       name: 'On-Premise',
       price: 'Custom',
-      description: 'For organizations that require full control over their infrastructure',
+      description: 'For organizations that require full control over their infrastructure.',
       features: [
         'All Enterprise features',
         'Deployment on your own infrastructure',
         'Complete data isolation',
-        'Dedicated support team',
+        'Dedicated runner',
+        'Assigned deployment engineer',
       ],
       cta: 'Contact Us',
       ctaLink: '/contact/',
@@ -106,24 +117,224 @@ function PricingTable() {
   );
 }
 
+function FeatureComparisonTable() {
+  const features = [
+    {
+      category: 'Security & Testing',
+      items: [
+        {
+          name: 'LLM evaluation capabilities',
+          community: true,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Basic vulnerability scanning',
+          community: true,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Advanced vulnerability detection',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Remediation recommendations',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Centralized guardrail dashboard',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Customized red teaming plugins',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Organization-specific attack profiles',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Saved target configurations',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Searchable scan history',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+      ],
+    },
+    {
+      category: 'Team & Collaboration',
+      items: [
+        {
+          name: 'Teams-based access control and SSO',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Team sharing & collaboration',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Custom roles & permissions',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Centralized dashboard',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+      ],
+    },
+    {
+      category: 'Integrations',
+      items: [
+        { name: 'CI/CD integration', community: true, enterprise: true, enterpriseOnPrem: true },
+        {
+          name: 'Promptfoo API integration',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        { name: 'Webhooks', community: false, enterprise: true, enterpriseOnPrem: true },
+      ],
+    },
+    {
+      category: 'Infrastructure',
+      items: [
+        { name: 'Cloud deployment', community: false, enterprise: true, enterpriseOnPrem: false },
+        {
+          name: 'On-premise deployment',
+          community: false,
+          enterprise: false,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Complete data isolation',
+          community: false,
+          enterprise: false,
+          enterpriseOnPrem: true,
+        },
+      ],
+    },
+    {
+      category: 'Support & Services',
+      items: [
+        { name: 'Community support', community: true, enterprise: true, enterpriseOnPrem: true },
+        {
+          name: 'Priority support & SLA guarantees',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Dedicated support team',
+          community: false,
+          enterprise: true,
+          enterpriseOnPrem: true,
+        },
+        {
+          name: 'Dedicated deployment engineer',
+          community: false,
+          enterprise: false,
+          enterpriseOnPrem: true,
+        },
+      ],
+    },
+  ];
+
+  return (
+    <section id="feature-comparison" className={styles.comparisonSection}>
+      <h2>Feature Comparison</h2>
+      <div className={styles.tableWrapper}>
+        <table className={styles.comparisonTable}>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>Community</th>
+              <th>Enterprise</th>
+              <th>Enterprise On-Premise</th>
+            </tr>
+          </thead>
+          <tbody>
+            {features.map((featureGroup, groupIndex) => (
+              <React.Fragment key={groupIndex}>
+                <tr className={styles.categoryRow}>
+                  <td colSpan={4}>{featureGroup.category}</td>
+                </tr>
+                {featureGroup.items.map((feature, featureIndex) => (
+                  <tr key={featureIndex}>
+                    <td>{feature.name}</td>
+                    <td className={styles.centerCell}>
+                      {feature.community ? <CheckIcon className={styles.checkIcon} /> : '—'}
+                    </td>
+                    <td className={styles.centerCell}>
+                      {feature.enterprise ? <CheckIcon className={styles.checkIcon} /> : '—'}
+                    </td>
+                    <td className={styles.centerCell}>
+                      {feature.enterpriseOnPrem ? <CheckIcon className={styles.checkIcon} /> : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function EnterpriseFeatures() {
   const features = [
     {
       title: 'Reports & Continuous Monitoring',
       description:
         'Understand your LLM security status across all projects with real-time alerts and automated evaluations.',
-      image: '/img/continuous-monitoring@2x.png',
+      image: '/img/continuous-monitoring-framed.png',
     },
     {
       title: 'Issue Tracking & Guided Remediation',
       description: 'Track remediation progress and get suggested steps for each issue.',
-      image: '/img/riskreport-2@2x.png',
+      image: '/img/vulnerability-list-framed.png',
     },
     {
       title: 'Comprehensive Scanning & Compliance',
+      description: 'Verify compliance with industry frameworks and standards.',
+      image: '/img/compliance-frameworks.png',
+    },
+    {
+      title: 'Organization-Specific Configurations',
       description:
-        'Additional plugins, help with creating custom plugins, and support for common standards frameworks.',
-      image: '/img/report-with-compliance@2x.png',
+        'Create customizable plugin collections, scan configurations, and target settings that can be shared among colleagues.',
+      image: '/img/enterprise-docs/create-plugin-collection.gif',
+    },
+    {
+      title: 'Teams-Based Controls',
+      description:
+        'Manage your LLM applications with teams-based access control and SSO, granular permission profiles, and customizable API access.',
+      image: '/img/enterprise-docs/add-team-members.png',
     },
   ];
 
@@ -150,6 +361,15 @@ function FAQSection() {
     {
       question: `What's included in the Community version?`,
       answer: `The Community version includes all core features for local testing, evaluation, and vulnerability scanning.`,
+    },
+    {
+      question: 'What is a probe?',
+      answer: 'A probe is a single request made to your target system during red team testing.',
+    },
+    {
+      question: 'Why are there usage limits on red teaming?',
+      answer:
+        'Certain red teaming plugins require inference for dynamic test generation and grading. The open-source Community version includes up to 10k probes per month at no charge. Enterprise customers can purchase additional probes for larger scale testing.',
     },
     {
       question: 'Who needs the Enterprise version?',
@@ -182,17 +402,63 @@ function FAQSection() {
   );
 }
 
-export default function Pricing(): JSX.Element {
+function DemoCTA() {
+  return (
+    <section className={styles.demoCTA}>
+      <h2>Ready to get started?</h2>
+      <p>Schedule a demo to see how Promptfoo can help secure your LLM applications.</p>
+      <Link
+        to="/contact/"
+        className={clsx('button', 'button--lg', 'button--primary', styles.demoButton)}
+      >
+        Schedule a Demo
+      </Link>
+    </section>
+  );
+}
+
+export default function Pricing(): React.ReactElement {
+  const { siteConfig } = useDocusaurusContext();
+  const siteUrl = siteConfig.url;
+
   return (
     <Layout
       title="Pricing"
       description="Choose the right solution for your team. Compare our Community (free, open-source) and Enterprise offerings."
     >
+      <Head>
+        <meta
+          property="og:title"
+          content="Pricing - LLM Security and Testing for Teams of All Sizes"
+        />
+        <meta
+          property="og:description"
+          content="Choose the right solution for your team. Compare our Community (free, open-source) and Enterprise offerings."
+        />
+        <meta property="og:image" content={`${siteUrl}/img/og/pricing-og.png`} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={`${siteUrl}/pricing`} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta
+          name="twitter:title"
+          content="Pricing - LLM Security and Testing for Teams of All Sizes"
+        />
+        <meta
+          name="twitter:description"
+          content="Choose the right solution for your team. Compare our Community (free, open-source) and Enterprise offerings."
+        />
+        <meta name="twitter:image" content={`${siteUrl}/img/og/pricing-og.png`} />
+        <link rel="canonical" href={`${siteUrl}/pricing`} />
+      </Head>
       <main className={styles.pricingPage}>
         <PricingHeader />
         <PricingTable />
         <EnterpriseFeatures />
+        <FeatureComparisonTable />
         <FAQSection />
+        <DemoCTA />
       </main>
     </Layout>
   );

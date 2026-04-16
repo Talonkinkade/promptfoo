@@ -1,6 +1,7 @@
 ---
 sidebar_position: 20
 sidebar_label: Node package
+description: Integrate LLM testing into Node.js apps with promptfoo's evaluate() function. Configure providers, run test suites, and analyze results using TypeScript/JavaScript APIs.
 ---
 
 # Using the node package
@@ -54,20 +55,31 @@ const providerWithOptions = await loadApiProvider('azure:chat:test', {
 
 ### Assertion functions
 
-An `Assertion` can take an `AssertionFunction` as its `value`. `AssertionFunction` parameters:
+An `Assertion` can take an `AssertionValueFunction` as its `value`. The function receives:
 
-- `output`: the LLM output
-- `testCase`: the test case
-- `assertion`: the assertion object
+- `output`: the LLM output string
+- `context`: execution context, including `prompt`, `vars`, `test`, `logProbs`, `config`, `provider`, `providerResponse`, and optional `trace` data for debugging
 
 <details>
 <summary>Type definition</summary>
 ```typescript
-type AssertionFunction = (
+type AssertionValueFunction = (
   output: string,
-  testCase: AtomicTestCase,
-  assertion: Assertion,
-) => Promise<GradingResult>;
+  context: AssertionValueFunctionContext,
+) => AssertionValueFunctionResult | Promise<AssertionValueFunctionResult>;
+
+interface AssertionValueFunctionContext {
+prompt: string | undefined;
+vars: Record<string, unknown>;
+test: AtomicTestCase;
+logProbs: number[] | undefined;
+config?: Record<string, any>;
+provider: ApiProvider | undefined;
+providerResponse: ProviderResponse | undefined;
+trace?: TraceData;
+}
+
+type AssertionValueFunctionResult = boolean | number | GradingResult;
 
 interface GradingResult {
 // Whether the test passed or failed
@@ -82,6 +94,9 @@ reason: string;
 // Map of labeled metrics to values
 namedScores?: Record<string, number>;
 
+// Weighted denominator for namedScores when assertion weights are used
+namedScoreWeights?: Record<string, number>;
+
 // Record of tokens usage for this assertion
 tokensUsed?: Partial<{
 total: number;
@@ -90,11 +105,14 @@ completion: number;
 cached?: number;
 }>;
 
+// Additional matcher/provider metadata
+metadata?: Record<string, unknown>;
+
 // List of results for each component of the assertion
 componentResults?: GradingResult[];
 
 // The assertion that was evaluated
-assertion: Assertion | null;
+assertion?: Assertion;
 }
 
 ````
@@ -112,7 +130,7 @@ import promptfoo from 'promptfoo';
 const results = await promptfoo.evaluate(
   {
     prompts: ['Rephrase this in French: {{body}}', 'Rephrase this like a pirate: {{body}}'],
-    providers: ['openai:gpt-4o-mini'],
+    providers: ['openai:gpt-5-mini'],
     tests: [
       {
         vars: {
@@ -151,7 +169,7 @@ import promptfoo from 'promptfoo';
       },
     ],
     providers: [
-      'openai:gpt-4o-mini',
+      'openai:gpt-5-mini',
       (prompt, context) => {
         // Call LLM here...
         console.log(`Prompt: ${prompt}, vars: ${JSON.stringify(context.vars)}`);
@@ -191,7 +209,7 @@ import promptfoo from 'promptfoo';
 })();
 ```
 
-There's a full example on Github [here](https://github.com/promptfoo/promptfoo/tree/main/examples/node-package).
+There's a full example on Github [here](https://github.com/promptfoo/promptfoo/tree/main/examples/config-node-package).
 
 Here's the example output in JSON format:
 
@@ -254,3 +272,21 @@ Here's the example output in JSON format:
   ]
 }
 ```
+
+## Sharing Results
+
+To get a shareable URL, set `sharing: true` along with `writeLatestResults: true`:
+
+```js
+const results = await promptfoo.evaluate({
+  prompts: ['Your prompt here'],
+  providers: ['openai:gpt-5-mini'],
+  tests: [{ vars: { input: 'test' } }],
+  writeLatestResults: true,
+  sharing: true,
+});
+
+console.log(results.shareableUrl); // https://app.promptfoo.dev/eval/abc123
+```
+
+Requires a [Promptfoo Cloud](/docs/enterprise) account or self-hosted server. For self-hosted, pass `sharing: { apiBaseUrl, appBaseUrl }` instead of `true`.

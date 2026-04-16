@@ -1,5 +1,6 @@
 ---
 sidebar_label: LocalAI
+description: 'Run self-hosted OpenAI-compatible APIs locally with LocalAI for private, offline LLM deployment and testing environments'
 ---
 
 # Local AI
@@ -24,7 +25,7 @@ The model name is typically the filename of the `.bin` file that you downloaded 
 
 You can set parameters like `temperature` and `apiBaseUrl` ([full list here](https://github.com/promptfoo/promptfoo/blob/main/src/providers/localai.ts#L7)). For example, using [LocalAI's lunademo](https://localai.io/docs/getting-started/models/):
 
-```yaml title=promptfooconfig.yaml
+```yaml title="promptfooconfig.yaml"
 providers:
   - id: localai:lunademo
     config:

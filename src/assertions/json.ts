@@ -1,31 +1,9 @@
-import type { ValidateFunction } from 'ajv';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import yaml from 'js-yaml';
-import { getEnvBool } from '../envars';
-import type { AssertionParams, GradingResult } from '../types';
 import invariant from '../util/invariant';
-import { extractJsonObjects } from '../util/json';
+import { extractJsonObjects, getAjv } from '../util/json';
+import type { ValidateFunction } from 'ajv';
 
-let ajvInstance: Ajv | null = null;
-
-export function resetAjv(): void {
-  if (process.env.NODE_ENV !== 'test') {
-    throw new Error('resetAjv can only be called in test environment');
-  }
-  ajvInstance = null;
-}
-
-export function getAjv(): Ajv {
-  if (!ajvInstance) {
-    const ajvOptions: ConstructorParameters<typeof Ajv>[0] = {
-      strictSchema: !getEnvBool('PROMPTFOO_DISABLE_AJV_STRICT_MODE'),
-    };
-    ajvInstance = new Ajv(ajvOptions);
-    addFormats(ajvInstance);
-  }
-  return ajvInstance;
-}
+import type { AssertionParams, GradingResult } from '../types/index';
 
 export function handleIsJson({
   outputString,
@@ -43,7 +21,7 @@ export function handleIsJson({
     pass = inverse;
   }
 
-  if (pass && renderedValue) {
+  if (parsedJson !== undefined && renderedValue) {
     let validate: ValidateFunction;
     if (typeof renderedValue === 'string') {
       if (renderedValue.startsWith('file://')) {
@@ -60,14 +38,17 @@ export function handleIsJson({
     } else {
       throw new Error('is-json assertion must have a string or object value');
     }
-    pass = validate(parsedJson);
+    const valid = validate(parsedJson);
+    pass = inverse ? !valid : valid;
     if (!pass) {
       return {
         pass,
         score: 0,
-        reason: `JSON does not conform to the provided schema. Errors: ${getAjv().errorsText(
-          validate.errors,
-        )}`,
+        reason: inverse
+          ? 'Output is JSON that conforms to the provided schema'
+          : `JSON does not conform to the provided schema. Errors: ${getAjv().errorsText(
+              validate.errors,
+            )}`,
         assertion,
       };
     }
@@ -109,8 +90,12 @@ export function handleContainsJson({
       } else {
         throw new Error('contains-json assertion must have a string or object value');
       }
-      pass = validate(jsonObject);
-      if (pass) {
+      const valid = validate(jsonObject);
+      pass = inverse ? !valid : valid;
+      if (valid) {
+        if (inverse) {
+          errorMessage = 'Output contains JSON conforming to the provided schema';
+        }
         break;
       } else {
         errorMessage = `JSON does not conform to the provided schema. Errors: ${getAjv().errorsText(
